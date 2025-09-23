@@ -158,8 +158,8 @@ Future<int> addBill(Map<String, dynamic> bill) async {
       if(bill ==null||account==null){
         return false;
       }
-      double newBill =  bill!['total_price']+price;
-      double newAccount =  account!["account_balance"]-price ;
+      double newBill =  bill['total_price']+price;
+      double newAccount =  account["account_balance"]-price ;
       db.update(
     'bills',
     {
@@ -198,7 +198,7 @@ Future<int> addBill(Map<String, dynamic> bill) async {
       if(account==null){
         return false;
       }
-      double newAccount =  account!["account_balance"]+balance ;
+      double newAccount =  account["account_balance"]+balance ;
   db.update(
     'accounts',
     {
