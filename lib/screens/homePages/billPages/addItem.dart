@@ -47,12 +47,12 @@ class _AdditemState extends State<Additem> {
                 children: [
                   TextField(
                     controller: item_name_field,
-                    decoration: const InputDecoration(labelText: 'إسم العنصر'),
+                    decoration: const InputDecoration(labelText: 'إسم العنصر',border: OutlineInputBorder()),
                     textDirection: TextDirection.rtl,
                   ),
                   TextField(
                     controller: item_count_field,
-                    decoration: const InputDecoration(labelText: 'عدد العنصر'),
+                    decoration: const InputDecoration(labelText: 'عدد العنصر',border: OutlineInputBorder()),
                     textDirection: TextDirection.rtl,
                     keyboardType: TextInputType.numberWithOptions(
                       decimal: true,
@@ -66,7 +66,7 @@ class _AdditemState extends State<Additem> {
                   TextField(
                     controller: item_price_field,
                     decoration: const InputDecoration(
-                      labelText: 'إجمالي السعر ',
+                      labelText: 'إجمالي السعر ',border: OutlineInputBorder()
                     ),
                     textDirection: TextDirection.rtl,
                     keyboardType: TextInputType.numberWithOptions(

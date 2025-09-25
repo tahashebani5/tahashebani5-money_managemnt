@@ -15,6 +15,8 @@ class _CreateaccountState extends State<Createaccount> {
 
   @override
   void dispose() {
+    account_name_field.dispose();
+    account_balance_field.dispose();
     super.dispose();
   }
 
@@ -37,7 +39,7 @@ class _CreateaccountState extends State<Createaccount> {
                 children: [
                   TextField(
                     controller: account_name_field,
-                    decoration: const InputDecoration(labelText: 'الاسم'),
+                    decoration: const InputDecoration(labelText: 'الاسم',border: OutlineInputBorder()),
                     textDirection: TextDirection.rtl,
                   ),
                   TextField(
@@ -50,7 +52,7 @@ class _CreateaccountState extends State<Createaccount> {
                       ),
                     ],
                     controller: account_balance_field,
-                    decoration: const InputDecoration(labelText: 'الرصيد'),
+                    decoration: const InputDecoration(labelText: 'الرصيد',border: OutlineInputBorder()),
                      textDirection: TextDirection.rtl,
                   ),
                 ],

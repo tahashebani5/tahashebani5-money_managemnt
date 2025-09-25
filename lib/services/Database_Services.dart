@@ -209,4 +209,28 @@ Future<int> addBill(Map<String, dynamic> bill) async {
   );
   return true;
   }
+Future<bool> updateBill(int bill_id,double balance) async{
+      final db = await database;
+      Map<String,dynamic>? bill = await getBillById(bill_id);
+      if(bill==null){
+        return false;
+      }
+      double newAccount =  bill["total_price"]-balance ;
+  db.update(
+    'bills',
+    {
+      'total_price': newAccount,
+    },
+    where: 'bill_id = ?',
+    whereArgs: [bill_id],
+  );
+  return true;
+  }
+  Future<void> deleteItem(int item_id,int account_id,int bill_id,double price)async{
+      final db = await database;
+      if( await db.delete("items",where: "item_id = ?",whereArgs: [item_id])>=1){
+        updateBalanceAcc(account_id,price);
+        updateBill(bill_id,price);
+      }
+  }
 }

@@ -45,7 +45,7 @@ class _AdddepositepageState extends State<Adddepositepage> {
                       ),
                     ],
                     controller: account_balance_field,
-                    decoration: const InputDecoration(labelText: 'الرصيد'),
+                    decoration: const InputDecoration(labelText: 'الرصيد',border: OutlineInputBorder()),
                      textDirection: TextDirection.rtl,
                   ),
                 ],
