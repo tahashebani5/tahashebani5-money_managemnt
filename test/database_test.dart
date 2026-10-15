@@ -104,6 +104,18 @@ void main() {
     expect(await _balance(a), 700.0);
   });
 
+  test('goals track savings without touching the balance and never go below zero', () async {
+    final db = DatabaseHelper();
+    final a = await db.addAccount({'account_name': 'a', 'account_balance': 1000.0});
+    await db.addGoal({'account_id': a, 'name': 'phone', 'target': 2000.0, 'saved': 100.0, 'created_date': '2026-10-15'});
+    final id = (await db.getGoals(a)).single['goal_id'] as int;
+    await db.changeGoalSaved(id, 250);
+    expect((await db.getGoals(a)).single['saved'], 350.0);
+    await db.changeGoalSaved(id, -1000);
+    expect((await db.getGoals(a)).single['saved'], 0.0);
+    expect(await _balance(a), 1000.0);
+  });
+
   test('first recurring date is this month if the day has not passed', () {
     final db = DatabaseHelper();
     expect(db.firstRecurringDate(25, now: DateTime(2026, 10, 15)), '2026-10-25');

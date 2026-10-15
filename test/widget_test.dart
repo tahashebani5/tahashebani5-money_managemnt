@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:money_management/main.dart';
+import 'package:money_management/screens/homePages/goalsPage.dart';
 import 'package:money_management/services/Database_Services.dart';
 import 'package:money_management/widgets/commonWidgets.dart';
 import 'package:money_management/widgets/pinPad.dart';
@@ -33,6 +34,15 @@ void main() {
     expect(friendlyDate('2026-10-12', now: now), 'الاثنين 12 أكتوبر');
     expect(friendlyDate('2025-12-31', now: now), 'الأربعاء 31 ديسمبر 2025');
     expect(friendlyDate('not a date', now: now), 'not a date');
+  });
+
+  test('goals: monthly amount needed to reach the target in time', () {
+    final now = DateTime(2026, 10, 15);
+    expect(monthlyNeeded(1200, 0, '2027-04-15', now: now), 200); // ~6 months
+    expect(monthlyNeeded(1200, 1200, '2027-04-15', now: now), isNull); // reached
+    expect(monthlyNeeded(1200, 0, '2026-10-01', now: now), isNull); // deadline passed
+    expect(monthlyNeeded(1200, 0, null, now: now), isNull); // no deadline
+    expect(monthlyNeeded(100, 0, '2026-10-20', now: now), 100); // less than a month
   });
 
   test('monthTitle shows the Arabic month name', () {

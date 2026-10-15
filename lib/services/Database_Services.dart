@@ -380,6 +380,38 @@ class DatabaseHelper {
     return added;
   }
 
+  // ---- Savings goals (tracking only: the balance is not changed) ----
+
+  Future<List<Map<String, dynamic>>> getGoals(int account_id) async {
+    final db = await database;
+    return await db.query('goals', where: 'account_id = ?', whereArgs: [account_id],
+        orderBy: 'saved >= target, goal_id DESC');
+  }
+
+  Future<void> addGoal(Map<String, dynamic> goal) async {
+    final db = await database;
+    await db.insert('goals', goal);
+  }
+
+  Future<void> updateGoal(int goal_id, Map<String, dynamic> values) async {
+    final db = await database;
+    await db.update('goals', values, where: 'goal_id = ?', whereArgs: [goal_id]);
+  }
+
+  // Adds (or with a negative amount withdraws) savings; never below zero.
+  Future<void> changeGoalSaved(int goal_id, double amount) async {
+    final db = await database;
+    await db.rawUpdate(
+      'UPDATE goals SET saved = MAX(0, ROUND(saved + ?, 2)) WHERE goal_id = ?',
+      [amount, goal_id],
+    );
+  }
+
+  Future<void> deleteGoal(int goal_id) async {
+    final db = await database;
+    await db.delete('goals', where: 'goal_id = ?', whereArgs: [goal_id]);
+  }
+
   Future<void> _addColumnIfMissing(DatabaseExecutor db, String table, String column, String type) async {
     final columns = await db.rawQuery('PRAGMA table_info($table)');
     if (columns.any((c) => c['name'] == column)) {
