@@ -263,6 +263,123 @@ class DatabaseHelper {
     );
   }
 
+  // ---- Recurring expenses (rent, subscriptions...) ----
+
+  // The occurrence in [year]/[month] on [day], moved to the month's last
+  // day when the month is shorter (e.g. day 31 in February -> 28/29).
+  String _monthlyDate(int year, int month, int day) {
+    final lastDay = DateTime(year, month + 1, 0).day;
+    final date = DateTime(year, month, 1);
+    return formatDate(DateTime(date.year, date.month, day > lastDay ? lastDay : day));
+  }
+
+  // First due date from [now]: this month if the day has not passed yet,
+  // otherwise next month.
+  String firstRecurringDate(int day, {DateTime? now}) {
+    final today = now ?? DateTime.now();
+    final thisMonth = _monthlyDate(today.year, today.month, day);
+    return thisMonth.compareTo(formatDate(today)) >= 0
+        ? thisMonth
+        : _monthlyDate(today.year, today.month + 1, day);
+  }
+
+  String _nextRecurringDate(String date, int day) {
+    final current = DateTime.parse(date);
+    return _monthlyDate(current.year, current.month + 1, day);
+  }
+
+  Future<List<Map<String, dynamic>>> getRecurring(int account_id) async {
+    final db = await database;
+    return await db.query('recurring', where: 'account_id = ?', whereArgs: [account_id],
+        orderBy: 'active DESC, day_of_month, recurring_id');
+  }
+
+  Future<void> addRecurring(Map<String, dynamic> recurring) async {
+    final db = await database;
+    await db.insert('recurring', recurring);
+  }
+
+  // Saves changes; a new day restarts the schedule from today.
+  Future<void> updateRecurring(int recurring_id, Map<String, dynamic> values) async {
+    final db = await database;
+    await db.update('recurring', values, where: 'recurring_id = ?', whereArgs: [recurring_id]);
+  }
+
+  // Resuming starts again from today, so paused months are not added later.
+  Future<void> setRecurringActive(int recurring_id, bool active) async {
+    final db = await database;
+    final rows = await db.query('recurring', where: 'recurring_id = ?', whereArgs: [recurring_id]);
+    if (rows.isEmpty) return;
+    await db.update(
+      'recurring',
+      {
+        'active': active ? 1 : 0,
+        if (active) 'next_date': firstRecurringDate(rows.first['day_of_month'] as int),
+      },
+      where: 'recurring_id = ?',
+      whereArgs: [recurring_id],
+    );
+  }
+
+  // Stops future additions; expenses already added stay in their bills.
+  Future<void> deleteRecurring(int recurring_id) async {
+    final db = await database;
+    await db.delete('recurring', where: 'recurring_id = ?', whereArgs: [recurring_id]);
+  }
+
+  // Adds every due occurrence (at most 12 per item, to catch up after the
+  // app was not opened) as an item in the bill of its date. Returns the
+  // names that were added. Safe to call often: nothing is due twice.
+  Future<List<String>> processDueRecurring({int? account_id, DateTime? now}) async {
+    final db = await database;
+    final today = formatDate(now ?? DateTime.now());
+    final added = <String>[];
+    final due = await db.query(
+      'recurring',
+      where: account_id == null ? 'active = 1 AND next_date <= ?' : 'active = 1 AND next_date <= ? AND account_id = ?',
+      whereArgs: account_id == null ? [today] : [today, account_id],
+    );
+    for (final item in due) {
+      final day = item['day_of_month'] as int;
+      final price = (item['amount'] as num).toDouble();
+      var date = item['next_date'] as String;
+      var count = 0;
+      while (date.compareTo(today) <= 0 && count < 12) {
+        final occurrence = date;
+        await db.transaction((txn) async {
+          final bills = await txn.query('bills', columns: ['bill_id'],
+              where: 'account_id = ? AND bill_date = ?', whereArgs: [item['account_id'], occurrence], limit: 1);
+          final billId = bills.isNotEmpty
+              ? bills.first['bill_id'] as int
+              : await txn.insert('bills', {'account_id': item['account_id'], 'total_price': 0.0, 'bill_date': occurrence});
+          await txn.insert('items', {
+            'bill_id': billId,
+            'item_name': item['name'],
+            'item_price': price,
+            'item_count': 1,
+            'category': item['category'],
+          });
+          await txn.rawUpdate('UPDATE bills SET total_price = ROUND(total_price + ?, 2) WHERE bill_id = ?', [price, billId]);
+          await txn.rawUpdate(
+            'UPDATE accounts SET account_balance = ROUND(account_balance - ?, 2) WHERE account_id = ?',
+            [price, item['account_id']],
+          );
+          await txn.update('recurring', {'next_date': _nextRecurringDate(occurrence, day)},
+              where: 'recurring_id = ?', whereArgs: [item['recurring_id']]);
+        });
+        added.add(item['name'] as String);
+        date = _nextRecurringDate(date, day);
+        count++;
+      }
+      // After a long break, skip the remaining old months
+      if (date.compareTo(today) <= 0) {
+        await db.update('recurring', {'next_date': firstRecurringDate(day, now: now)},
+            where: 'recurring_id = ?', whereArgs: [item['recurring_id']]);
+      }
+    }
+    return added;
+  }
+
   Future<void> _addColumnIfMissing(DatabaseExecutor db, String table, String column, String type) async {
     final columns = await db.rawQuery('PRAGMA table_info($table)');
     if (columns.any((c) => c['name'] == column)) {

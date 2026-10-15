@@ -23,6 +23,24 @@ class _SelectaccountState extends State<Selectaccount> {
         });
   }
 
+  Future<List<dynamic>> _load() async {
+    // Add any recurring expenses that became due, then show the list
+    try {
+      final added = await DatabaseHelper().processDueRecurring();
+      if (added.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('أُضيفت المصاريف الثابتة: ${added.toSet().join('، ')}')),
+          );
+        });
+      }
+    } catch (_) {
+      // Never block the accounts list because of a recurring item
+    }
+    return [await DatabaseHelper().getAccounts(), await backupReminderDue()];
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -38,7 +56,7 @@ class _SelectaccountState extends State<Selectaccount> {
         ],
       ),
       body: FutureBuilder<List<dynamic>>(
-        future: Future.wait([DatabaseHelper().getAccounts(), backupReminderDue()]),
+        future: _load(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());

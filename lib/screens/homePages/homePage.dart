@@ -3,6 +3,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:money_management/screens/homePages/billPages/addItem.dart';
 import 'package:money_management/screens/homePages/billPages/billPage.dart';
 import 'package:money_management/screens/homePages/debtPages/debtsPage.dart';
+import 'package:money_management/screens/homePages/recurringPage.dart';
 import 'package:money_management/screens/homePages/depositePages/addDepositePage.dart';
 import 'package:money_management/screens/homePages/searchPage.dart';
 import 'package:money_management/screens/homePages/transferPage.dart';
@@ -18,7 +19,9 @@ class Homepage extends StatefulWidget {
 }
 
 class _HomepageState extends State<Homepage> {
-  Future<List<dynamic>> _load() {
+  Future<List<dynamic>> _load() async {
+    // Catch up recurring expenses (e.g. when the app stayed open past midnight)
+    await DatabaseHelper().processDueRecurring(account_id: widget.acccount_id);
     return Future.wait([
       DatabaseHelper().getAccount(widget.acccount_id),
       DatabaseHelper().getMonthSummary(widget.acccount_id),
@@ -240,6 +243,11 @@ class _HomepageState extends State<Homepage> {
                       icon: Icons.handshake_outlined,
                       label: 'الديون',
                       onTap: () => _open(Debtspage(account_id: widget.acccount_id)),
+                    ),
+                    _ActionTile(
+                      icon: Icons.event_repeat,
+                      label: 'مصاريف ثابتة',
+                      onTap: () => _open(Recurringpage(account_id: widget.acccount_id)),
                     ),
                   ],
                 ),

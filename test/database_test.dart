@@ -76,6 +76,43 @@ void main() {
     expect(await _balance(b), 100.0);
   });
 
+  test('recurring expenses: catch up missed months, adjust short months, never add twice', () async {
+    final db = DatabaseHelper();
+    final a = await db.addAccount({'account_name': 'a', 'account_balance': 1000.0});
+    await db.addRecurring({
+      'account_id': a, 'name': 'rent', 'amount': 100.0, 'category': 'home',
+      'day_of_month': 31, 'next_date': '2026-01-31', 'active': 1,
+    });
+
+    // Opened on 20 April: January 31, February 28, March 31 are due
+    final added = await db.processDueRecurring(now: DateTime(2026, 4, 20));
+    expect(added, ['rent', 'rent', 'rent']);
+    expect(await _balance(a), 700.0);
+    final bills = await db.getBills(a);
+    expect(bills.map((b) => b['bill_date']), ['2026-03-31', '2026-02-28', '2026-01-31']);
+    expect((await db.getItems(bills.first['bill_id'] as int)).single['category'], 'home');
+    expect((await db.getRecurring(a)).single['next_date'], '2026-04-30');
+
+    // Opening again the same day adds nothing
+    expect(await db.processDueRecurring(now: DateTime(2026, 4, 20)), isEmpty);
+    expect(await _balance(a), 700.0);
+
+    // Paused items are skipped
+    final id = (await db.getRecurring(a)).single['recurring_id'] as int;
+    await db.updateRecurring(id, {'active': 0});
+    expect(await db.processDueRecurring(now: DateTime(2026, 6, 1)), isEmpty);
+    expect(await _balance(a), 700.0);
+  });
+
+  test('first recurring date is this month if the day has not passed', () {
+    final db = DatabaseHelper();
+    expect(db.firstRecurringDate(25, now: DateTime(2026, 10, 15)), '2026-10-25');
+    expect(db.firstRecurringDate(15, now: DateTime(2026, 10, 15)), '2026-10-15');
+    expect(db.firstRecurringDate(5, now: DateTime(2026, 10, 15)), '2026-11-05');
+    expect(db.firstRecurringDate(31, now: DateTime(2026, 2, 10)), '2026-02-28');
+    expect(db.firstRecurringDate(1, now: DateTime(2026, 12, 20)), '2027-01-01');
+  });
+
   test('debts: lending, repayments and deleting move the balance correctly', () async {
     final a = await DatabaseHelper().addAccount({'account_name': 'a', 'account_balance': 1000.0});
 
