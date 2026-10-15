@@ -42,3 +42,8 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // AppCompat themes for the fingerprint dialog (local_auth), see styles.xml
+    implementation("androidx.appcompat:appcompat:1.7.0")
+}

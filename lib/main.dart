@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'screens/accountPages/selectAccount.dart';
 import 'services/Database_Services.dart';
+import 'widgets/appLockGate.dart';
 import 'widgets/commonWidgets.dart';
 
 Future<void> main() async {
@@ -79,6 +80,8 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      // Optional PIN lock over every screen (off unless enabled in settings)
+      builder: (context, child) => AppLockGate(child: child!),
       home: Selectaccount(),
     );
   }

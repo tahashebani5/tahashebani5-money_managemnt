@@ -1,9 +1,9 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:money_management/screens/accountPages/createAccount.dart';
 import 'package:money_management/screens/homePages/accountShell.dart';
+import 'package:money_management/screens/settingsPage.dart';
 import '../../services/Database_Services.dart';
+import '../../widgets/backupActions.dart';
 import '../../widgets/commonWidgets.dart';
 
 class Selectaccount extends StatefulWidget {
@@ -14,75 +14,12 @@ class Selectaccount extends StatefulWidget {
 }
 
 class _SelectaccountState extends State<Selectaccount> {
-  void _showMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-
-  Future<void> _backup() async {
-    try {
-      final path = await DatabaseHelper().exportBackup();
-      await SharePlus.instance.share(
-        ShareParams(files: [XFile(path)], subject: 'نسخة احتياطية - إدارة الأموال'),
-      );
-    } catch (e) {
-      _showMessage('تعذر إنشاء النسخة الاحتياطية');
-    }
-  }
-
-  Future<void> _restore() async {
-    final confirmed = await confirmDialog(
-      context,
-      title: 'استعادة نسخة احتياطية',
-      message: 'سيتم استبدال كل البيانات الحالية بالبيانات الموجودة في النسخة المختارة. هل تريد المتابعة؟',
-      confirmLabel: 'استعادة',
-    );
-    if (!confirmed) return;
-
-    try {
-      final file = await FilePicker.pickFile();
-      if (file == null) return;
-      final restored = await DatabaseHelper().restoreBackup(await file.readAsBytes());
-      if (restored) {
-        _showMessage('تمت استعادة البيانات بنجاح');
-        setState(() {});
-      } else {
-        _showMessage('هذا الملف ليس نسخة احتياطية صالحة، لم يتم تغيير أي شيء');
-      }
-    } catch (e) {
-      _showMessage('تعذرت استعادة النسخة الاحتياطية');
-    }
-  }
-
-  Future<void> _chooseCurrency() async {
-    final chosen = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('العملة'),
-        children: [
-          for (final symbol in currencyChoices)
-            ListTile(
-              leading: Icon(
-                symbol == currencySymbol ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-              ),
-              title: Text(ltr(symbol)),
-              onTap: () => Navigator.of(context).pop(symbol),
-            ),
-        ],
-      ),
-    );
-    if (chosen == null || chosen == currencySymbol) return;
-    await DatabaseHelper().setSetting('currency', chosen);
-    setState(() => currencySymbol = chosen);
-  }
-
-  void _openCreateAccount() {
+  // Pushes a page and reloads the list (balances, currency, reminder) on return.
+  void _open(Widget page) {
     Navigator.of(context)
-        .push(MaterialPageRoute(builder: (context) => const Createaccount()))
+        .push(MaterialPageRoute(builder: (context) => page))
         .then((_) {
-          setState(() {});
+          if (mounted) setState(() {});
         });
   }
 
@@ -93,50 +30,24 @@ class _SelectaccountState extends State<Selectaccount> {
       appBar: AppBar(
         title: const Text('الحسابات'),
         actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'backup') _backup();
-              if (value == 'restore') _restore();
-              if (value == 'currency') _chooseCurrency();
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'currency',
-                child: ListTile(
-                  leading: const Icon(Icons.currency_exchange),
-                  title: const Text('العملة'),
-                  trailing: Text(ltr(currencySymbol)),
-                ),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: 'backup',
-                child: ListTile(
-                  leading: Icon(Icons.upload_file),
-                  title: Text('نسخ احتياطي'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'restore',
-                child: ListTile(
-                  leading: Icon(Icons.restore),
-                  title: Text('استعادة نسخة'),
-                ),
-              ),
-            ],
+          IconButton(
+            tooltip: 'الإعدادات',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => _open(const Settingspage()),
           ),
         ],
       ),
-      body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: DatabaseHelper().getAccounts(),
+      body: FutureBuilder<List<dynamic>>(
+        future: Future.wait([DatabaseHelper().getAccounts(), backupReminderDue()]),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
-          final accounts = snapshot.data ?? [];
+          final accounts = snapshot.data![0] as List<Map<String, dynamic>>;
+          final reminderDays = snapshot.data![1] as int?;
           if (accounts.isEmpty) {
             return const EmptyState(
               icon: Icons.account_balance_wallet_outlined,
@@ -144,56 +55,104 @@ class _SelectaccountState extends State<Selectaccount> {
               subtitle: 'اضغط على "حساب جديد" لإضافة أول حساب',
             );
           }
-          return ListView.builder(
+          return ListView(
             padding: const EdgeInsets.only(top: 12, bottom: 96),
-            itemCount: accounts.length,
-            itemBuilder: (context, index) {
-              final account = accounts[index];
-              return Card(
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: CircleAvatar(
-                    backgroundColor: scheme.primaryContainer,
-                    foregroundColor: scheme.onPrimaryContainer,
-                    child: const Icon(Icons.account_balance_wallet),
-                  ),
-                  title: Text(
-                    account['account_name'],
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: const Text('الرصيد'),
-                  trailing: Text(
-                    moneyText(account['account_balance']),
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: scheme.primary,
+            children: [
+              if (reminderDays != null) _backupReminder(reminderDays),
+              for (final account in accounts)
+                Card(
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    leading: CircleAvatar(
+                      backgroundColor: scheme.primaryContainer,
+                      foregroundColor: scheme.onPrimaryContainer,
+                      child: const Icon(Icons.account_balance_wallet),
                     ),
+                    title: Text(
+                      account['account_name'],
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: const Text('الرصيد'),
+                    trailing: Text(
+                      moneyText(account['account_balance']),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: scheme.primary,
+                      ),
+                    ),
+                    onTap: () => _open(Accountshell(account_id: account['account_id'])),
                   ),
-                  onTap: () {
-                    Navigator.of(context)
-                        .push(
-                          MaterialPageRoute(
-                            builder: (context) => Accountshell(
-                              account_id: account['account_id'],
-                            ),
-                          ),
-                        )
-                        .then((_) {
-                          // Balance may have changed inside the account
-                          setState(() {});
-                        });
-                  },
                 ),
-              );
-            },
+            ],
           );
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreateAccount,
+        onPressed: () => _open(const Createaccount()),
         icon: const Icon(Icons.add),
         label: const Text('حساب جديد'),
+      ),
+    );
+  }
+
+  // Card shown when no backup was made for a while (see backupReminderDue).
+  Widget _backupReminder(int days) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.backup_outlined, color: scheme.onSecondaryContainer),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    days < 0
+                        ? 'لم تحفظ أي نسخة احتياطية بعد'
+                        : 'آخر نسخة احتياطية كانت قبل $days يوماً',
+                    style: TextStyle(
+                      color: scheme.onSecondaryContainer,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsetsDirectional.only(top: 6, start: 36),
+              child: Text(
+                'احفظ نسخة في Drive أو أرسلها لنفسك حتى لا تضيع بياناتك إذا تغيّر الهاتف.',
+                style: TextStyle(color: scheme.onSecondaryContainer),
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () async {
+                    await snoozeBackupReminder();
+                    if (mounted) setState(() {});
+                  },
+                  child: const Text('لاحقاً'),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    await shareBackup(context);
+                    if (mounted) setState(() {});
+                  },
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('نسخ الآن'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

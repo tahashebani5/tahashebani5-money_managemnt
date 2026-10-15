@@ -1,8 +1,10 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:money_management/main.dart';
 import 'package:money_management/services/Database_Services.dart';
 import 'package:money_management/widgets/commonWidgets.dart';
+import 'package:money_management/widgets/pinPad.dart';
 
 void main() {
   group('money formatting', () {
@@ -57,6 +59,34 @@ void main() {
     expect(requiredAmount(''), isNotNull);
     expect(requiredAmount('0'), isNotNull);
     expect(requiredAmount('5'), isNull);
+  });
+
+  testWidgets('PIN pad works above the Navigator, where the lock screen is', (tester) async {
+    String? entered;
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => Stack(children: [
+        child!,
+        Positioned.fill(
+          child: Scaffold(
+            body: PinPad(
+              title: 'lock',
+              onBiometric: () {},
+              onCompleted: (pin) async {
+                entered = pin;
+                return null;
+              },
+            ),
+          ),
+        ),
+      ]),
+      home: const SizedBox(),
+    ));
+    expect(tester.takeException(), isNull);
+    for (final digit in ['1', '0', '9', '0']) {
+      await tester.tap(find.text(digit).first);
+      await tester.pump();
+    }
+    expect(entered, '1090');
   });
 
   testWidgets('app starts on the accounts screen', (tester) async {
