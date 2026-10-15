@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../services/Database_Services.dart';
-import 'package:flutter/services.dart';
+import '../../../widgets/commonWidgets.dart';
 
 class Additem extends StatefulWidget {
   final int bill_id;
@@ -13,122 +13,93 @@ class Additem extends StatefulWidget {
 }
 
 class _AdditemState extends State<Additem> {
+  final _formKey = GlobalKey<FormState>();
   final item_name_field = TextEditingController();
-
   final item_price_field = TextEditingController();
+  final item_count_field = TextEditingController(text: '1');
+  bool _saving = false;
 
-  final item_count_field = TextEditingController();
+  @override
+  void dispose() {
+    item_name_field.dispose();
+    item_price_field.dispose();
+    item_count_field.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_saving || !_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+    final price = double.parse(item_price_field.text);
+    final Map<String, dynamic> item = {
+      'bill_id': widget.bill_id,
+      'item_name': item_name_field.text.trim(),
+      'item_price': price,
+      'item_count': int.parse(item_count_field.text),
+    };
+    await DatabaseHelper().addItemToBill(item, widget.account_id, price);
+    if (!mounted) return;
+    Navigator.of(context).pop(true);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-        title: null,
-        flexibleSpace: Padding(
-          padding: const EdgeInsets.only(top: 20),
-          child: Center(
-            child: Text(
-              'اضافة عنصر',
-              style: TextStyle(color: Colors.white, fontSize: 25),
-            ),
-          ),
-        ),
-      ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(right: 30, left: 30),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  TextField(
-                    controller: item_name_field,
-                    decoration: const InputDecoration(labelText: 'إسم العنصر',border: OutlineInputBorder()),
-                    textDirection: TextDirection.rtl,
-                  ),
-                  TextField(
-                    controller: item_count_field,
-                    decoration: const InputDecoration(labelText: 'عدد العنصر',border: OutlineInputBorder()),
-                    textDirection: TextDirection.rtl,
-                    keyboardType: TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(
-                        RegExp(r'^\d+'),
-                      ),
-                    ],
-                  ),
-                  TextField(
-                    controller: item_price_field,
-                    decoration: const InputDecoration(
-                      labelText: 'إجمالي السعر ',border: OutlineInputBorder()
-                    ),
-                    textDirection: TextDirection.rtl,
-                    keyboardType: TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(
-                        RegExp(r'^\d+\.?\d{0,2}'),
-                      ),
-                    ],
-                  ),
-                ],
+      appBar: AppBar(title: const Text('إضافة عنصر')),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            TextFormField(
+              controller: item_name_field,
+              autofocus: true,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'اسم العنصر',
+                prefixIcon: Icon(Icons.shopping_bag_outlined),
               ),
+              validator: (value) =>
+                  (value == null || value.trim().isEmpty) ? 'أدخل اسم العنصر' : null,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 60, right: 60, bottom: 30),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: Text(
-                    'إلغاء',
-                    style: TextStyle(fontSize: 20, color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: () async{
-                    if(item_count_field.text.isNotEmpty&&item_name_field.text.isNotEmpty&&item_price_field.text.isNotEmpty){
-                      Map<String, dynamic> item={
-                        'bill_id': widget.bill_id,
-                        'item_name':item_name_field.text,
-                        'item_price':double.tryParse(item_price_field.text),
-                        'item_count':int.tryParse(item_count_field.text)
-                      };
-                      await DatabaseHelper().addItemToBill(item, widget.account_id, double.parse(item_price_field.text));
-                     if (!context.mounted) return;
-                     final result= {'account_id':widget.account_id,'bill_id':widget.bill_id,'date':widget.date};
-                      Navigator.of(context).pop(result);
-                    }
-                    
-                  },
-                  child: Text(
-                    'تأكيد',
-                    style: TextStyle(fontSize: 20, color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: item_count_field,
+              keyboardType: TextInputType.number,
+              inputFormatters: countInputFormatters,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'الكمية',
+                prefixIcon: Icon(Icons.numbers),
+              ),
+              validator: (value) {
+                final count = int.tryParse(value ?? '');
+                if (count == null || count < 1) return 'أدخل الكمية (1 على الأقل)';
+                return null;
+              },
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: item_price_field,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: moneyInputFormatters,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _save(),
+              decoration: const InputDecoration(
+                labelText: 'السعر الإجمالي',
+                helperText: 'سعر كل الكمية معاً',
+                prefixIcon: Icon(Icons.payments_outlined),
+              ),
+              validator: requiredAmount,
+            ),
+            const SizedBox(height: 32),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: const Icon(Icons.check),
+              label: const Text('حفظ'),
+            ),
+          ],
+        ),
       ),
     );
   }

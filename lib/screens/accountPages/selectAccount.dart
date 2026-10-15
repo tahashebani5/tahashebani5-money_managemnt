@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:money_management/screens/accountPages/createAccount.dart';
 import 'package:money_management/screens/homePages/homePage.dart';
 import '../../services/Database_Services.dart';
+import '../../widgets/commonWidgets.dart';
 
 class Selectaccount extends StatefulWidget {
   const Selectaccount({super.key});
@@ -16,7 +17,7 @@ class _SelectaccountState extends State<Selectaccount> {
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message, textDirection: TextDirection.rtl)),
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -32,27 +33,13 @@ class _SelectaccountState extends State<Selectaccount> {
   }
 
   Future<void> _restore() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('استعادة نسخة احتياطية', textDirection: TextDirection.rtl),
-        content: Text(
-          'سيتم استبدال كل البيانات الحالية بالبيانات الموجودة في النسخة المختارة. هل تريد المتابعة؟',
-          textDirection: TextDirection.rtl,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('إلغاء'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text('استعادة', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+    final confirmed = await confirmDialog(
+      context,
+      title: 'استعادة نسخة احتياطية',
+      message: 'سيتم استبدال كل البيانات الحالية بالبيانات الموجودة في النسخة المختارة. هل تريد المتابعة؟',
+      confirmLabel: 'استعادة',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     try {
       final file = await FilePicker.pickFile();
@@ -69,20 +56,27 @@ class _SelectaccountState extends State<Selectaccount> {
     }
   }
 
+  void _openCreateAccount() {
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (context) => const Createaccount()))
+        .then((_) {
+          setState(() {});
+        });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-        title: Center(child: Text('الحسابات', style: TextStyle(fontSize: 30))),
+        title: const Text('الحسابات'),
         actions: [
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'backup') _backup();
               if (value == 'restore') _restore();
             },
-            itemBuilder: (context) => [
+            itemBuilder: (context) => const [
               PopupMenuItem(
                 value: 'backup',
                 child: ListTile(
@@ -101,100 +95,73 @@ class _SelectaccountState extends State<Selectaccount> {
           ),
         ],
       ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: DatabaseHelper().getAccounts(),
-            builder: (context, snapshot) {
-              // Check if the Future is still running
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const CircularProgressIndicator(); // Show a loader
-              }
-      
-              // Check if there was an error
-              if (snapshot.hasError) {
-                return Text('Error: ${snapshot.error}');
-              }
-      
-              if (snapshot.hasData) {
-                // Use the map() function to transform the list of maps into a list of buttons
-                final List<Map<String, dynamic>> accounts = snapshot.data!;
-                final List<Widget> buttons = accounts.map((account) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 40,bottom: 20),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 60,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: () {
-                          print(account['account_id']);
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => Homepage(
-                                acccount_id: account['account_id'],
-                              ),
-                            ),
-                          );
-                        },
-                        child: Text(
-                          account['account_name'],
-                          style: TextStyle(fontSize: 30),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList();
-      
-                // Return a Column containing all the generated buttons
-                return Expanded(
-                  child: SingleChildScrollView(
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 40, left: 40),
-                      child: Column(
-                        children: buttons,
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      ),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: DatabaseHelper().getAccounts(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+          final accounts = snapshot.data ?? [];
+          if (accounts.isEmpty) {
+            return const EmptyState(
+              icon: Icons.account_balance_wallet_outlined,
+              title: 'لا توجد حسابات بعد',
+              subtitle: 'اضغط على "حساب جديد" لإضافة أول حساب',
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.only(top: 12, bottom: 96),
+            itemCount: accounts.length,
+            itemBuilder: (context, index) {
+              final account = accounts[index];
+              return Card(
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  leading: CircleAvatar(
+                    backgroundColor: scheme.primaryContainer,
+                    foregroundColor: scheme.onPrimaryContainer,
+                    child: const Icon(Icons.account_balance_wallet),
+                  ),
+                  title: Text(
+                    account['account_name'],
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text('الرصيد'),
+                  trailing: Text(
+                    moneyText(account['account_balance']),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: scheme.primary,
                     ),
                   ),
-                );
-              }
-      
-              // // Default case for no data
-              return const Text('No items found.');
+                  onTap: () {
+                    Navigator.of(context)
+                        .push(
+                          MaterialPageRoute(
+                            builder: (context) => Homepage(
+                              acccount_id: account['account_id'],
+                            ),
+                          ),
+                        )
+                        .then((_) {
+                          // Balance may have changed inside the account
+                          setState(() {});
+                        });
+                  },
+                ),
+              );
             },
-          ),
-         
-        ],
+          );
+        },
       ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: SizedBox(
-          height: 70,
-          width: 70,
-
-          child: FloatingActionButton(
-              backgroundColor: Colors.deepPurple[300],
-              foregroundColor: Colors.white,
-            onPressed: () async {
-              Navigator.of(context)
-                  .push(
-                    MaterialPageRoute(
-                      builder: (context) => const Createaccount(),
-                    ),
-                  )
-                  .then((_) {
-                    setState(() {});
-                  });
-              // await DatabaseHelper().deleteAll();
-            },
-            child: Text('+', style: TextStyle(fontSize: 40)),
-          ),
-        ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openCreateAccount,
+        icon: const Icon(Icons.add),
+        label: const Text('حساب جديد'),
       ),
     );
   }

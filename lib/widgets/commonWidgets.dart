@@ -1,0 +1,186 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../services/Database_Services.dart';
+
+const List<String> arabicMonths = [
+  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+];
+
+// Keeps numbers/dates in left-to-right order inside Arabic text,
+// so "2026-10-15" does not show as "15-10-2026".
+String ltr(String text) => '\u2066$text\u2069';
+
+// Formats an amount for display, e.g. 1250.5 -> "1,250.5$"
+String moneyText(num? value) => ltr('${DatabaseHelper().formatMoney(value)}\$');
+
+// "2026-10-15" -> "أكتوبر 2026"
+String monthTitle(String date) {
+  final parts = date.split('-');
+  final month = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+  if (month < 1 || month > 12) return date;
+  return '${arabicMonths[month - 1]} ${parts[0]}';
+}
+
+// Lets users type with an Arabic keyboard: ٠١٢٣٤٥٦٧٨٩ / ۰۱۲۳۴۵۶۷۸۹ -> 0-9, ٫ -> .
+class ArabicDigitsFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final buffer = StringBuffer();
+    for (final rune in newValue.text.runes) {
+      if (rune >= 0x0660 && rune <= 0x0669) {
+        buffer.writeCharCode(0x30 + rune - 0x0660);
+      } else if (rune >= 0x06F0 && rune <= 0x06F9) {
+        buffer.writeCharCode(0x30 + rune - 0x06F0);
+      } else if (rune == 0x066B) {
+        buffer.write('.');
+      } else {
+        buffer.writeCharCode(rune);
+      }
+    }
+    final text = buffer.toString();
+    if (text == newValue.text) return newValue;
+    return newValue.copyWith(text: text);
+  }
+}
+
+final List<TextInputFormatter> moneyInputFormatters = [
+  ArabicDigitsFormatter(),
+  FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+];
+
+final List<TextInputFormatter> countInputFormatters = [
+  ArabicDigitsFormatter(),
+  FilteringTextInputFormatter.digitsOnly,
+];
+
+String? requiredAmount(String? value) {
+  final amount = double.tryParse(value ?? '');
+  if (amount == null) return 'أدخل المبلغ';
+  if (amount <= 0) return 'يجب أن يكون المبلغ أكبر من صفر';
+  return null;
+}
+
+Future<bool> confirmDialog(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required String confirmLabel,
+}) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('إلغاء'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: TextButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.error,
+          ),
+          child: Text(confirmLabel),
+        ),
+      ],
+    ),
+  );
+  return confirmed == true;
+}
+
+class EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  const EmptyState({super.key, required this.icon, required this.title, this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 72, color: scheme.primary.withValues(alpha: 0.5)),
+            const SizedBox(height: 16),
+            Text(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
+            if (subtitle != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                subtitle!,
+                style: TextStyle(color: scheme.onSurfaceVariant),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Coloured card at the top of a screen showing one big amount.
+class SummaryCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final Widget? footer;
+  const SummaryCard({super.key, required this.label, required this.value, this.footer});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [scheme.primary, scheme.tertiary],
+          begin: AlignmentDirectional.topStart,
+          end: AlignmentDirectional.bottomEnd,
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(color: scheme.onPrimary.withValues(alpha: 0.85), fontSize: 16)),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(color: scheme.onPrimary, fontSize: 34, fontWeight: FontWeight.bold),
+          ),
+          if (footer != null) ...[const SizedBox(height: 16), footer!],
+        ],
+      ),
+    );
+  }
+}
+
+// Section title used above lists, e.g. a month name with its total.
+class SectionHeader extends StatelessWidget {
+  final String title;
+  final String? trailing;
+  const SectionHeader({super.key, required this.title, this.trailing});
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      color: Theme.of(context).colorScheme.primary,
+      fontWeight: FontWeight.bold,
+      fontSize: 16,
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(title, style: style)),
+          if (trailing != null) Text(trailing!, style: style),
+        ],
+      ),
+    );
+  }
+}

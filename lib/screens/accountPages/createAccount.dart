@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../services/Database_Services.dart';
+import '../../widgets/commonWidgets.dart';
 
 class Createaccount extends StatefulWidget {
   const Createaccount({super.key});
@@ -10,8 +10,10 @@ class Createaccount extends StatefulWidget {
 }
 
 class _CreateaccountState extends State<Createaccount> {
+  final _formKey = GlobalKey<FormState>();
   final account_name_field = TextEditingController();
   final account_balance_field = TextEditingController();
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -20,82 +22,60 @@ class _CreateaccountState extends State<Createaccount> {
     super.dispose();
   }
 
+  Future<void> _save() async {
+    if (_saving || !_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+    final Map<String, dynamic> account = {
+      'account_name': account_name_field.text.trim(),
+      'account_balance': double.parse(account_balance_field.text),
+    };
+    await DatabaseHelper().addAccount(account);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-        title: Text("اضافة حساب جديد", style: TextStyle(fontSize: 30)),
-      ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(right: 30, left: 30),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  TextField(
-                    controller: account_name_field,
-                    decoration: const InputDecoration(labelText: 'الاسم',border: OutlineInputBorder()),
-                    textDirection: TextDirection.rtl,
-                  ),
-                  TextField(
-                    keyboardType: TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(
-                        RegExp(r'^\d+\.?\d{0,2}'),
-                      ),
-                    ],
-                    controller: account_balance_field,
-                    decoration: const InputDecoration(labelText: 'الرصيد',border: OutlineInputBorder()),
-                     textDirection: TextDirection.rtl,
-                  ),
-                ],
+      appBar: AppBar(title: const Text('إضافة حساب جديد')),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            TextFormField(
+              controller: account_name_field,
+              autofocus: true,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'اسم الحساب',
+                prefixIcon: Icon(Icons.badge_outlined),
               ),
+              validator: (value) =>
+                  (value == null || value.trim().isEmpty) ? 'أدخل اسم الحساب' : null,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 40),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () async{
-                      if(!account_balance_field.text.isEmpty&&!account_name_field.text.isEmpty){
-
-                      final Map<String,dynamic> account={
-                        'account_name':account_name_field.text ,
-                        'account_balance': double.tryParse(account_balance_field.text)
-                      };
-                       await DatabaseHelper().addAccount(account);
-                       Navigator.of(context).pop();
-                    }
-                  },
-                  child: Text("تأكيد"),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: Text("إلغاء"),
-                ),
-              ],
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: account_balance_field,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: moneyInputFormatters,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _save(),
+              decoration: const InputDecoration(
+                labelText: 'الرصيد الافتتاحي',
+                prefixIcon: Icon(Icons.payments_outlined),
+              ),
+              validator: (value) =>
+                  double.tryParse(value ?? '') == null ? 'أدخل الرصيد' : null,
             ),
-          ),
-        ],
+            const SizedBox(height: 32),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: const Icon(Icons.check),
+              label: const Text('حفظ الحساب'),
+            ),
+          ],
+        ),
       ),
     );
   }

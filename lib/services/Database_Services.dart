@@ -116,7 +116,7 @@ Future<void> deleteAll() async {
 
 
   final db = await database;
-  final formattedDate = DateFormat('yyyy-MM-dd').format(date);
+  final formattedDate = DateFormat('yyyy-MM-dd', 'en_US').format(date);
   final result = await db.query("bills", where: 'account_id = ? AND bill_date LIKE ?',whereArgs: [account_id,formattedDate]);
   return result.isEmpty;
 }
@@ -139,7 +139,7 @@ Future<int> addBill(Map<String, dynamic> bill) async {
   }
     Future<List<Map<String,dynamic>>> getBills(int account_id) async{
       final db = await database;
-      return await db.query('bills' ,where: 'account_id = ?',whereArgs: [account_id]);
+      return await db.query('bills' ,where: 'account_id = ?',whereArgs: [account_id], orderBy: 'bill_date DESC, bill_id DESC');
   }
 
       Future<Map<String,dynamic>?> getBillById(int id) async{
@@ -152,13 +152,13 @@ Future<int> addBill(Map<String, dynamic> bill) async {
       }
   }
   String formatDate(DateTime date){
-      final formattedDate = DateFormat('yyyy-MM-dd').format(date);
+      final formattedDate = DateFormat('yyyy-MM-dd', 'en_US').format(date);
       return formattedDate;
   }
 
   // Rounds to 2 decimals for display, e.g. 12.300000000001 -> 12.3
   String formatMoney(num? value){
-      return NumberFormat('#,##0.##').format(value ?? 0);
+      return NumberFormat('#,##0.##', 'en_US').format(value ?? 0);
   }
 
   Future<int> addItem(Map<String, dynamic> item) async {
@@ -192,7 +192,39 @@ Future<int> addBill(Map<String, dynamic> bill) async {
 
     Future<List<Map<String,dynamic>>> getDeposites(int account_id) async{
       final db = await database;
-      return await db.query('deposites',where: 'account_id = ?',whereArgs: [account_id]);
+      return await db.query('deposites',where: 'account_id = ?',whereArgs: [account_id], orderBy: 'deposite_date DESC, deposites_id DESC');
+  }
+
+  // Totals spent (bills) and deposited during the current month.
+  Future<Map<String, double>> getMonthSummary(int account_id) async {
+      final db = await database;
+      final month = '${DateFormat('yyyy-MM', 'en_US').format(DateTime.now())}%';
+      final spent = await db.rawQuery(
+        'SELECT COALESCE(SUM(total_price), 0) AS total FROM bills WHERE account_id = ? AND bill_date LIKE ?',
+        [account_id, month],
+      );
+      final deposited = await db.rawQuery(
+        'SELECT COALESCE(SUM(deposite_balance), 0) AS total FROM deposites WHERE account_id = ? AND deposite_date LIKE ?',
+        [account_id, month],
+      );
+      return {
+        'spent': (spent.first['total'] as num).toDouble(),
+        'deposited': (deposited.first['total'] as num).toDouble(),
+      };
+  }
+
+  // Latest non-empty bills and deposits together, newest first.
+  Future<List<Map<String, dynamic>>> getRecentActivity(int account_id, {int limit = 5}) async {
+      final db = await database;
+      return await db.rawQuery(
+        "SELECT 'bill' AS type, bill_id AS id, bill_date AS date, total_price AS amount "
+        "FROM bills WHERE account_id = ? AND total_price != 0 "
+        "UNION ALL "
+        "SELECT 'deposite' AS type, deposites_id AS id, deposite_date AS date, deposite_balance AS amount "
+        "FROM deposites WHERE account_id = ? "
+        "ORDER BY date DESC, id DESC LIMIT ?",
+        [account_id, account_id, limit],
+      );
   }
 
   // Saves the deposit and raises the account balance together.
@@ -233,7 +265,7 @@ Future<int> addBill(Map<String, dynamic> bill) async {
       await closeDatabase();
       final source = File(await _databaseFilePath());
       final tempDir = await getTemporaryDirectory();
-      final stamp = DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now());
+      final stamp = DateFormat('yyyy-MM-dd_HH-mm', 'en_US').format(DateTime.now());
       final backupPath = join(tempDir.path, 'money_backup_$stamp.db');
       await source.copy(backupPath);
       return backupPath;
