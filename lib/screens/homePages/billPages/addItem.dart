@@ -21,6 +21,7 @@ class _AdditemState extends State<Additem> {
   final item_count_field = TextEditingController(text: '1');
   final _nameFocus = FocusNode();
   List<Map<String, dynamic>> _suggestions = [];
+  String? _category;
   bool _saving = false;
 
   bool get _isEdit => widget.item != null;
@@ -32,6 +33,7 @@ class _AdditemState extends State<Additem> {
     if (item != null) {
       item_name_field.text = item['item_name'].toString();
       item_count_field.text = item['item_count'].toString();
+      _category = item['category'] as String?;
       item_price_field.text = DatabaseHelper().formatMoney(item['item_price']).replaceAll(',', '');
     }
     DatabaseHelper().getItemSuggestions(widget.account_id).then((rows) {
@@ -55,13 +57,14 @@ class _AdditemState extends State<Additem> {
     final count = int.parse(item_count_field.text);
     final price = double.parse(item_price_field.text);
     if (_isEdit) {
-      await DatabaseHelper().updateItem(widget.item!['item_id'], widget.account_id, name, count, price);
+      await DatabaseHelper().updateItem(widget.item!['item_id'], widget.account_id, name, count, price, _category);
     } else {
       final Map<String, dynamic> item = {
         'bill_id': widget.bill_id,
         'item_name': name,
         'item_price': price,
         'item_count': count,
+        'category': _category,
       };
       await DatabaseHelper().addItemToBill(item, widget.account_id, price);
     }
@@ -74,6 +77,7 @@ class _AdditemState extends State<Additem> {
     item_name_field.text = suggestion['name'] as String;
     item_count_field.text = suggestion['item_count'].toString();
     item_price_field.text = DatabaseHelper().formatMoney(suggestion['item_price']).replaceAll(',', '');
+    setState(() => _category = suggestion['category'] as String?);
     FocusScope.of(context).unfocus();
   }
 
@@ -169,6 +173,24 @@ class _AdditemState extends State<Additem> {
                 prefixIcon: Icon(Icons.payments_outlined),
               ),
               validator: requiredAmount,
+            ),
+            const SizedBox(height: 20),
+            Text('الفئة', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final category in itemCategories)
+                  ChoiceChip(
+                    avatar: Icon(category.icon, size: 18),
+                    label: Text(category.label),
+                    selected: _category == category.key,
+                    // Tapping the selected chip again clears the category
+                    onSelected: (selected) =>
+                        setState(() => _category = selected ? category.key : null),
+                  ),
+              ],
             ),
             const SizedBox(height: 32),
             FilledButton.icon(

@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'screens/accountPages/selectAccount.dart';
-void main() {
+import 'services/Database_Services.dart';
+import 'widgets/commonWidgets.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    currencySymbol = await DatabaseHelper().getSetting('currency') ?? currencySymbol;
+  } catch (_) {
+    // Keep the default currency; the app still opens
+  }
   runApp(const MyApp());
 }
 

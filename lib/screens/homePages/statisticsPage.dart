@@ -15,6 +15,7 @@ class _StatisticspageState extends State<Statisticspage> {
   late final Future<List<dynamic>> _data = Future.wait([
     DatabaseHelper().getMonthlyTotals(widget.account_id),
     DatabaseHelper().getTopItems(widget.account_id),
+    DatabaseHelper().getCategoryTotals(widget.account_id),
   ]);
   int? _selected;
 
@@ -43,6 +44,7 @@ class _StatisticspageState extends State<Statisticspage> {
           }
           final months = snapshot.data![0] as List<Map<String, dynamic>>;
           final topItems = snapshot.data![1] as List<Map<String, dynamic>>;
+          final categoryRows = snapshot.data![2] as List<Map<String, dynamic>>;
           final selected = _selected ?? months.length - 1;
           final current = months.last['spent'] as double;
           final previous = months[months.length - 2]['spent'] as double;
@@ -52,6 +54,8 @@ class _StatisticspageState extends State<Statisticspage> {
               : spentMonths.fold<double>(0, (s, m) => s + (m['spent'] as double)) / spentMonths.length;
           final month = months[selected];
           final net = (month['deposited'] as double) - (month['spent'] as double);
+          // Already sorted biggest first by the query
+          final monthCategories = categoryRows.where((r) => r['month'] == month['month']).toList();
 
           return ListView(
             padding: const EdgeInsets.only(bottom: 24),
@@ -107,6 +111,29 @@ class _StatisticspageState extends State<Statisticspage> {
                   ),
                 ),
               ),
+              SectionHeader(title: 'حسب الفئة · ${monthTitle('${month['month']}-01')}'),
+              if (monthCategories.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: Text('لا توجد مشتريات في هذا الشهر')),
+                )
+              else
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      children: [
+                        for (final row in monthCategories)
+                          _TopItemRow(
+                            icon: categoryOf(row['category'] as String).icon,
+                            name: categoryOf(row['category'] as String).label,
+                            total: (row['total'] as num).toDouble(),
+                            fraction: (row['total'] as num) / (monthCategories.first['total'] as num),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
               const SectionHeader(title: 'أكثر ما صرفت عليه'),
               if (topItems.isEmpty)
                 const Padding(
@@ -177,7 +204,8 @@ class _MonthlyBars extends StatelessWidget {
   const _MonthlyBars({required this.months, required this.selected, required this.onSelect});
 
   static const double _plotHeight = 160;
-  static const double _labelSpace = 24;
+  // Room above the tallest bar for its value label (Arabic currency text is tall)
+  static const double _labelSpace = 40;
 
   @override
   Widget build(BuildContext context) {
@@ -282,11 +310,12 @@ class _DetailRow extends StatelessWidget {
 }
 
 class _TopItemRow extends StatelessWidget {
+  final IconData? icon;
   final String name;
   final double total;
-  final num count;
+  final num? count;
   final double fraction;
-  const _TopItemRow({required this.name, required this.total, required this.count, required this.fraction});
+  const _TopItemRow({this.icon, required this.name, required this.total, this.count, required this.fraction});
 
   @override
   Widget build(BuildContext context) {
@@ -298,6 +327,10 @@ class _TopItemRow extends StatelessWidget {
         children: [
           Row(
             children: [
+              if (icon != null) ...[
+                Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+              ],
               Expanded(child: Text(name, style: const TextStyle(fontSize: 16))),
               Text(moneyText(total), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ],
@@ -315,8 +348,10 @@ class _TopItemRow extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 4),
-          Text('الكمية الكلية: $count', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+          if (count != null) ...[
+            const SizedBox(height: 4),
+            Text('الكمية الكلية: $count', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+          ],
         ],
       ),
     );

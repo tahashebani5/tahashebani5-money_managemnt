@@ -27,6 +27,7 @@ class _BillpageState extends State<Billpage> {
     return Future.wait([
       DatabaseHelper().getBillById(widget.bill_id),
       DatabaseHelper().getItems(widget.bill_id),
+      DatabaseHelper().getBudgetStatus(widget.account_id),
     ]);
   }
 
@@ -65,6 +66,7 @@ class _BillpageState extends State<Billpage> {
                 'item_name': item['item_name'],
                 'item_price': price,
                 'item_count': item['item_count'],
+                'category': item['category'],
               },
               widget.account_id,
               price,
@@ -110,6 +112,7 @@ class _BillpageState extends State<Billpage> {
             }
             final bill = snapshot.data![0] as Map<String, dynamic>?;
             final items = snapshot.data![1] as List<Map<String, dynamic>>;
+            final budget = snapshot.data![2] as Map<String, double?>;
 
             return ListView(
               padding: const EdgeInsets.only(bottom: 96),
@@ -124,6 +127,7 @@ class _BillpageState extends State<Billpage> {
                     ),
                   ),
                 ),
+                BudgetWarning(budget: budget['budget'], spent: budget['spent'] ?? 0),
                 if (items.isEmpty)
                   const EmptyState(
                     icon: Icons.shopping_cart_outlined,
@@ -179,19 +183,15 @@ class _BillpageState extends State<Billpage> {
                           leading: CircleAvatar(
                             backgroundColor: scheme.secondaryContainer,
                             foregroundColor: scheme.onSecondaryContainer,
-                            child: Text(
-                              '×${item['item_count']}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
+                            child: Icon(categoryOf(item['category']).icon),
                           ),
                           title: Text(
                             item['item_name'].toString(),
                             style: const TextStyle(fontSize: 18),
                           ),
-                          subtitle: Text('الكمية: ${item['item_count']}'),
+                          subtitle: Text(
+                            'الكمية: ${item['item_count']} · ${categoryOf(item['category']).label}',
+                          ),
                           trailing: Text(
                             moneyText(item['item_price']),
                             style: const TextStyle(

@@ -11,8 +11,41 @@ const List<String> arabicMonths = [
 // so "2026-10-15" does not show as "15-10-2026".
 String ltr(String text) => '\u2066$text\u2069';
 
-// Formats an amount for display, e.g. 1250.5 -> "1,250.5$"
-String moneyText(num? value) => ltr('${DatabaseHelper().formatMoney(value)}\$');
+// Currency shown after amounts; loaded from settings when the app starts.
+String currencySymbol = '\$';
+
+const List<String> currencyChoices = ['\$', '€', 'د.ل', 'ر.س', 'د.إ', 'ج.م', 'د.ت', 'د.ج', 'د.م'];
+
+// Formats an amount for display, e.g. 1250.5 -> "1,250.5$" or "1,250.5 د.ل"
+String moneyText(num? value) {
+  final amount = DatabaseHelper().formatMoney(value);
+  return ltr(currencySymbol.length == 1 ? '$amount$currencySymbol' : '$amount $currencySymbol');
+}
+
+class ItemCategory {
+  final String key;
+  final String label;
+  final IconData icon;
+  const ItemCategory(this.key, this.label, this.icon);
+}
+
+// The stored value is the key, so labels and icons can change safely.
+const List<ItemCategory> itemCategories = [
+  ItemCategory('food', 'طعام', Icons.restaurant),
+  ItemCategory('transport', 'مواصلات', Icons.directions_car),
+  ItemCategory('bills', 'فواتير وخدمات', Icons.receipt),
+  ItemCategory('health', 'صحة', Icons.medical_services),
+  ItemCategory('clothes', 'ملابس', Icons.checkroom),
+  ItemCategory('home', 'منزل', Icons.chair),
+  ItemCategory('fun', 'ترفيه', Icons.celebration),
+  ItemCategory('other', 'أخرى', Icons.category),
+];
+
+const ItemCategory noCategory = ItemCategory('', 'بدون تصنيف', Icons.shopping_bag_outlined);
+
+// Old items (saved before categories existed) have no category.
+ItemCategory categoryOf(String? key) =>
+    itemCategories.firstWhere((c) => c.key == key, orElse: () => noCategory);
 
 // "2026-10-15" -> "أكتوبر 2026"
 String monthTitle(String date) {
@@ -173,6 +206,41 @@ class SummaryCard extends StatelessWidget {
             style: TextStyle(color: scheme.onPrimary, fontSize: 34, fontWeight: FontWeight.bold),
           ),
           if (footer != null) ...[const SizedBox(height: 16), footer!],
+        ],
+      ),
+    );
+  }
+}
+
+// Coloured bar shown once this month's spending reaches 80% of the budget.
+// Shows nothing when there is no budget or spending is still below 80%.
+class BudgetWarning extends StatelessWidget {
+  final double? budget;
+  final double spent;
+  const BudgetWarning({super.key, required this.budget, required this.spent});
+
+  @override
+  Widget build(BuildContext context) {
+    final limit = budget;
+    if (limit == null || limit <= 0 || spent < limit * 0.8) {
+      return const SizedBox.shrink();
+    }
+    final scheme = Theme.of(context).colorScheme;
+    final over = spent > limit;
+    final background = over ? scheme.errorContainer : scheme.tertiaryContainer;
+    final foreground = over ? scheme.onErrorContainer : scheme.onTertiaryContainer;
+    final message = over
+        ? 'تجاوزت الميزانية الشهرية بمقدار ${moneyText(spent - limit)}'
+        : 'اقتربت من الميزانية الشهرية: بقي ${moneyText(limit - spent)}';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        children: [
+          Icon(over ? Icons.error_outline : Icons.warning_amber_rounded, color: foreground),
+          const SizedBox(width: 8),
+          Expanded(child: Text(message, style: TextStyle(color: foreground, fontWeight: FontWeight.bold))),
         ],
       ),
     );

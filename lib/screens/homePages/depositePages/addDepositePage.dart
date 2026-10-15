@@ -15,6 +15,7 @@ class Adddepositepage extends StatefulWidget {
 class _AdddepositepageState extends State<Adddepositepage> {
   final _formKey = GlobalKey<FormState>();
   final account_balance_field = TextEditingController();
+  final _note = TextEditingController();
   late String _date;
   bool _saving = false;
 
@@ -28,12 +29,14 @@ class _AdddepositepageState extends State<Adddepositepage> {
     if (deposite != null) {
       account_balance_field.text =
           DatabaseHelper().formatMoney(deposite['deposite_balance']).replaceAll(',', '');
+      _note.text = (deposite['note'] as String?) ?? '';
     }
   }
 
   @override
   void dispose() {
     account_balance_field.dispose();
+    _note.dispose();
     super.dispose();
   }
 
@@ -41,13 +44,15 @@ class _AdddepositepageState extends State<Adddepositepage> {
     if (_saving || !_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     final amount = double.parse(account_balance_field.text);
+    final note = _note.text.trim().isEmpty ? null : _note.text.trim();
     if (_isEdit) {
-      await DatabaseHelper().updateDeposite(widget.deposite!['deposites_id'], amount, _date);
+      await DatabaseHelper().updateDeposite(widget.deposite!['deposites_id'], amount, _date, note);
     } else {
       final Map<String, dynamic> balance = {
         'account_id': widget.account_id,
         'deposite_balance': amount,
         'deposite_date': _date,
+        'note': note,
       };
       await DatabaseHelper().addDeposite(balance);
     }
@@ -69,13 +74,23 @@ class _AdddepositepageState extends State<Adddepositepage> {
               autofocus: !_isEdit,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               inputFormatters: moneyInputFormatters,
-              textInputAction: TextInputAction.done,
-              onFieldSubmitted: (_) => _save(),
+              textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
                 labelText: 'المبلغ',
                 prefixIcon: Icon(Icons.savings_outlined),
               ),
               validator: requiredAmount,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _note,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _save(),
+              decoration: const InputDecoration(
+                labelText: 'ملاحظة (اختياري)',
+                hintText: 'مثلاً: راتب، هدية',
+                prefixIcon: Icon(Icons.notes),
+              ),
             ),
             const SizedBox(height: 16),
             InkWell(

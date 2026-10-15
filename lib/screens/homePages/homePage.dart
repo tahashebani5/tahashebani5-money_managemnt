@@ -5,6 +5,7 @@ import 'package:money_management/screens/homePages/billPages/previesBillsPage.da
 import 'package:money_management/screens/homePages/depositePages/depositePage.dart';
 import 'package:money_management/screens/homePages/searchPage.dart';
 import 'package:money_management/screens/homePages/statisticsPage.dart';
+import 'package:money_management/screens/homePages/transferPage.dart';
 import '../../services/Database_Services.dart';
 import '../../widgets/commonWidgets.dart';
 
@@ -137,9 +138,26 @@ class _HomepageState extends State<Homepage> {
               ),
               PopupMenuButton<String>(
                 onSelected: (value) {
+                  if (value == 'budget') _editBudget((account['monthly_budget'] as num?)?.toDouble());
+                  if (value == 'transfer') _open(Transferpage(account_id: widget.acccount_id));
                   if (value == 'delete') _deleteAccount(account['account_name'] as String);
                 },
                 itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'budget',
+                    child: ListTile(
+                      leading: Icon(Icons.savings),
+                      title: Text('الميزانية الشهرية'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'transfer',
+                    child: ListTile(
+                      leading: Icon(Icons.swap_horiz),
+                      title: Text('تحويل إلى حساب آخر'),
+                    ),
+                  ),
+                  const PopupMenuDivider(),
                   PopupMenuItem(
                     value: 'delete',
                     child: ListTile(
@@ -160,24 +178,37 @@ class _HomepageState extends State<Homepage> {
               SummaryCard(
                 label: 'الرصيد الحالي',
                 value: moneyText(account['account_balance']),
-                footer: Row(
+                footer: Column(
                   children: [
-                    Expanded(
-                      child: _MonthStat(
-                        icon: Icons.arrow_upward,
-                        label: 'مصروف هذا الشهر',
-                        value: moneyText(summary['spent']),
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _MonthStat(
+                            icon: Icons.arrow_upward,
+                            label: 'مصروف هذا الشهر',
+                            value: moneyText(summary['spent']),
+                          ),
+                        ),
+                        Expanded(
+                          child: _MonthStat(
+                            icon: Icons.arrow_downward,
+                            label: 'إيداع هذا الشهر',
+                            value: moneyText(summary['deposited']),
+                          ),
+                        ),
+                      ],
                     ),
-                    Expanded(
-                      child: _MonthStat(
-                        icon: Icons.arrow_downward,
-                        label: 'إيداع هذا الشهر',
-                        value: moneyText(summary['deposited']),
+                    if (((account['monthly_budget'] as num?) ?? 0) > 0)
+                      _BudgetProgress(
+                        budget: (account['monthly_budget'] as num).toDouble(),
+                        spent: summary['spent'] ?? 0,
                       ),
-                    ),
                   ],
                 ),
+              ),
+              BudgetWarning(
+                budget: (account['monthly_budget'] as num?)?.toDouble(),
+                spent: summary['spent'] ?? 0,
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -216,29 +247,150 @@ class _HomepageState extends State<Homepage> {
   }
 
   Widget _activityTile(Map<String, dynamic> activity) {
-    final isBill = activity['type'] == 'bill';
-    final color = isBill ? Colors.red.shade400 : Colors.green.shade600;
+    final type = activity['type'];
+    final note = activity['note'] as String?;
+    final hasNote = note != null && note.isNotEmpty;
+    final bool outgoing = type == 'bill' || type == 'transfer_out';
+    final Color color;
+    final IconData icon;
+    final String title;
+    VoidCallback? onTap;
+    switch (type) {
+      case 'bill':
+        color = Colors.red.shade400;
+        icon = Icons.shopping_bag_outlined;
+        title = 'فاتورة';
+        onTap = () => _open(Billpage(
+              account_id: widget.acccount_id,
+              date: activity['date'],
+              bill_id: activity['id'],
+            ));
+      case 'deposite':
+        color = Colors.green.shade600;
+        icon = Icons.savings_outlined;
+        title = (note != null && note.isNotEmpty) ? note : 'إيداع';
+      default:
+        color = Theme.of(context).colorScheme.primary;
+        icon = Icons.swap_horiz;
+        title = type == 'transfer_out'
+            ? 'تحويل إلى ${activity['other_account'] ?? 'حساب محذوف'}'
+            : 'تحويل من ${activity['other_account'] ?? 'حساب محذوف'}';
+        onTap = () => _deleteTransfer(activity);
+    }
+    final subtitle = [
+      activity['date'].toString(),
+      if (hasNote && type != 'deposite') note,
+    ].join(' · ');
     return Card(
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: color.withValues(alpha: 0.15),
           foregroundColor: color,
-          child: Icon(isBill ? Icons.shopping_bag_outlined : Icons.savings_outlined),
+          child: Icon(icon),
         ),
-        title: Text(isBill ? 'فاتورة' : 'إيداع'),
-        subtitle: Text(activity['date'].toString()),
+        title: Text(title),
+        subtitle: Text(subtitle),
         trailing: Text(
-          '${isBill ? '-' : '+'}${moneyText(activity['amount'])}',
+          '${outgoing ? '-' : '+'}${moneyText(activity['amount'])}',
           textDirection: TextDirection.ltr,
           style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16),
         ),
-        onTap: isBill
-            ? () => _open(Billpage(
-                  account_id: widget.acccount_id,
-                  date: activity['date'],
-                  bill_id: activity['id'],
-                ))
-            : null,
+        onTap: onTap,
+      ),
+    );
+  }
+
+  Future<void> _deleteTransfer(Map<String, dynamic> activity) async {
+    final confirmed = await confirmDialog(
+      context,
+      title: 'حذف التحويل',
+      message: 'هل تريد حذف هذا التحويل بقيمة ${moneyText(activity['amount'])}؟ '
+          'سيعود المبلغ إلى الحساب الذي خرج منه.',
+      confirmLabel: 'حذف',
+    );
+    if (!confirmed) return;
+    await DatabaseHelper().deleteTransfer(activity['id']);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _editBudget(double? current) async {
+    final controller = TextEditingController(
+      text: current == null ? '' : DatabaseHelper().formatMoney(current).replaceAll(',', ''),
+    );
+    // Returns the new budget, 0 to remove it, or null when cancelled
+    final result = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('الميزانية الشهرية'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('حدد أقصى مبلغ تريد صرفه في الشهر. سيظهر تنبيه عند الوصول إلى 80%.'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: moneyInputFormatters,
+              decoration: const InputDecoration(labelText: 'المبلغ'),
+            ),
+          ],
+        ),
+        actions: [
+          if (current != null)
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(0),
+              child: const Text('إزالة الميزانية'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () {
+              final value = double.tryParse(controller.text);
+              if (value != null && value > 0) Navigator.of(context).pop(value);
+            },
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    await DatabaseHelper().setMonthlyBudget(widget.acccount_id, result > 0 ? result : null);
+    if (mounted) setState(() {});
+  }
+}
+
+class _BudgetProgress extends StatelessWidget {
+  final double budget;
+  final double spent;
+  const _BudgetProgress({required this.budget, required this.spent});
+
+  @override
+  Widget build(BuildContext context) {
+    final onPrimary = Theme.of(context).colorScheme.onPrimary;
+    final ratio = spent / budget;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'الميزانية: ${moneyText(spent)} من ${moneyText(budget)} (${ltr('${(ratio * 100).round()}%')})',
+            style: TextStyle(color: onPrimary, fontSize: 13),
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: ratio.clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: onPrimary.withValues(alpha: 0.25),
+              color: onPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }

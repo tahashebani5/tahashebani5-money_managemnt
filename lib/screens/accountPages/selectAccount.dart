@@ -56,6 +56,28 @@ class _SelectaccountState extends State<Selectaccount> {
     }
   }
 
+  Future<void> _chooseCurrency() async {
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('العملة'),
+        children: [
+          for (final symbol in currencyChoices)
+            ListTile(
+              leading: Icon(
+                symbol == currencySymbol ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+              ),
+              title: Text(ltr(symbol)),
+              onTap: () => Navigator.of(context).pop(symbol),
+            ),
+        ],
+      ),
+    );
+    if (chosen == null || chosen == currencySymbol) return;
+    await DatabaseHelper().setSetting('currency', chosen);
+    setState(() => currencySymbol = chosen);
+  }
+
   void _openCreateAccount() {
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (context) => const Createaccount()))
@@ -75,16 +97,26 @@ class _SelectaccountState extends State<Selectaccount> {
             onSelected: (value) {
               if (value == 'backup') _backup();
               if (value == 'restore') _restore();
+              if (value == 'currency') _chooseCurrency();
             },
-            itemBuilder: (context) => const [
+            itemBuilder: (context) => [
               PopupMenuItem(
+                value: 'currency',
+                child: ListTile(
+                  leading: const Icon(Icons.currency_exchange),
+                  title: const Text('العملة'),
+                  trailing: Text(ltr(currencySymbol)),
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
                 value: 'backup',
                 child: ListTile(
                   leading: Icon(Icons.upload_file),
                   title: Text('نسخ احتياطي'),
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'restore',
                 child: ListTile(
                   leading: Icon(Icons.restore),

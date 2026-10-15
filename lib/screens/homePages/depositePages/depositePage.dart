@@ -55,6 +55,7 @@ class _DepositepageState extends State<Depositepage> {
               'account_id': widget.account_id,
               'deposite_balance': deposite['deposite_balance'],
               'deposite_date': deposite['deposite_date'],
+              'note': deposite['note'],
             });
             if (mounted) setState(() {});
           },
@@ -157,7 +158,12 @@ class _DepositepageState extends State<Depositepage> {
                               textAlign: TextAlign.right,
                               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: green),
                             ),
-                            subtitle: Text(deposite['deposite_date'].toString()),
+                            subtitle: Text(
+                              [
+                                deposite['deposite_date'].toString(),
+                                if ((deposite['note'] as String?)?.isNotEmpty ?? false) deposite['note'] as String,
+                              ].join(' · '),
+                            ),
                           ),
                         ),
                       ),

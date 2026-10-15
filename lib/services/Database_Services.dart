@@ -37,13 +37,25 @@ class DatabaseHelper {
     }
   }
 
+  // Version history:
+  // 1 - accounts, bills, items, deposites
+  // 2 - items.category, deposites.note, accounts.monthly_budget,
+  //     transfers and settings tables (old rows are kept, new columns empty)
+  static const int _dbVersion = 2;
+
     Future<Database> _initDatabase() async {
     final path = await _databaseFilePath();
+    await _copyBeforeUpgrade(path);
 
     // Open the database and create   tables
     return await openDatabase(
       path,
-      version: 1,
+      version: _dbVersion,
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await _upgradeToV2(db);
+        }
+      },
       onCreate: (db, version) async{
         await db.execute(
           "CREATE TABLE accounts(account_id INTEGER PRIMARY KEY, account_name TEXT, account_balance REAL)",
@@ -57,7 +69,121 @@ class DatabaseHelper {
         await db.execute(
           "CREATE TABLE deposites(deposites_id INTEGER PRIMARY KEY,account_id INTEGER , deposite_balance REAL,deposite_date TEXT,FOREIGN KEY (account_id) REFERENCES accounts(accounts_id))",
         );
+        await _upgradeToV2(db);
       },
+    );
+  }
+
+  // Keeps a copy of the file before an older database is upgraded,
+  // e.g. my_database_before_v2.db. Never overwrites an existing copy.
+  Future<void> _copyBeforeUpgrade(String path) async {
+    final file = File(path);
+    if (!await file.exists()) {
+      return;
+    }
+    final probe = await openDatabase(path, readOnly: true, singleInstance: false);
+    final version = await probe.getVersion();
+    await probe.close();
+    if (version > 0 && version < _dbVersion) {
+      final copy = File(join(dirname(path), 'my_database_before_v$_dbVersion.db'));
+      if (!await copy.exists()) {
+        await file.copy(copy.path);
+      }
+    }
+  }
+
+  // Only adds columns and tables; existing rows are never changed.
+  Future<void> _upgradeToV2(DatabaseExecutor db) async {
+    await _addColumnIfMissing(db, 'items', 'category', 'TEXT');
+    await _addColumnIfMissing(db, 'deposites', 'note', 'TEXT');
+    await _addColumnIfMissing(db, 'accounts', 'monthly_budget', 'REAL');
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS transfers(transfer_id INTEGER PRIMARY KEY, from_account_id INTEGER, '
+      'to_account_id INTEGER, amount REAL, transfer_date TEXT, note TEXT)',
+    );
+    await db.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT)');
+  }
+
+  Future<void> _addColumnIfMissing(DatabaseExecutor db, String table, String column, String type) async {
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    if (columns.any((c) => c['name'] == column)) {
+      return;
+    }
+    await db.execute('ALTER TABLE $table ADD COLUMN $column $type');
+  }
+
+  Future<String?> getSetting(String key) async {
+    final db = await database;
+    final rows = await db.query('settings', where: 'key = ?', whereArgs: [key], limit: 1);
+    return rows.isEmpty ? null : rows.first['value'] as String?;
+  }
+
+  Future<void> setSetting(String key, String value) async {
+    final db = await database;
+    await db.insert('settings', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // null removes the budget.
+  Future<void> setMonthlyBudget(int account_id, double? budget) async {
+    final db = await database;
+    await db.update('accounts', {'monthly_budget': budget}, where: 'account_id = ?', whereArgs: [account_id]);
+  }
+
+  // Moves money between two accounts: one transfer row, both balances, one transaction.
+  Future<void> addTransfer(int from_account_id, int to_account_id, double amount, String date, String? note) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.insert('transfers', {
+        'from_account_id': from_account_id,
+        'to_account_id': to_account_id,
+        'amount': amount,
+        'transfer_date': date,
+        'note': note,
+      });
+      await txn.rawUpdate(
+        'UPDATE accounts SET account_balance = ROUND(account_balance - ?, 2) WHERE account_id = ?',
+        [amount, from_account_id],
+      );
+      await txn.rawUpdate(
+        'UPDATE accounts SET account_balance = ROUND(account_balance + ?, 2) WHERE account_id = ?',
+        [amount, to_account_id],
+      );
+    });
+  }
+
+  // Removes a transfer and puts both balances back.
+  Future<void> deleteTransfer(int transfer_id) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final rows = await txn.query('transfers', where: 'transfer_id = ?', whereArgs: [transfer_id]);
+      if (rows.isEmpty) {
+        return;
+      }
+      final t = rows.first;
+      await txn.delete('transfers', where: 'transfer_id = ?', whereArgs: [transfer_id]);
+      await txn.rawUpdate(
+        'UPDATE accounts SET account_balance = ROUND(account_balance + ?, 2) WHERE account_id = ?',
+        [t['amount'], t['from_account_id']],
+      );
+      await txn.rawUpdate(
+        'UPDATE accounts SET account_balance = ROUND(account_balance - ?, 2) WHERE account_id = ?',
+        [t['amount'], t['to_account_id']],
+      );
+    });
+  }
+
+  // Spending per category for the last [months] months:
+  // [{'month': '2026-10', 'category': 'food', 'total': 40.0}, ...]
+  // Items without a category have category ''.
+  Future<List<Map<String, dynamic>>> getCategoryTotals(int account_id, {int months = 6}) async {
+    final db = await database;
+    final now = DateTime.now();
+    final from = '${DateFormat('yyyy-MM', 'en_US').format(DateTime(now.year, now.month - months + 1))}-01';
+    return await db.rawQuery(
+      "SELECT substr(bills.bill_date, 1, 7) AS month, COALESCE(items.category, '') AS category, "
+      'SUM(items.item_price) AS total FROM items JOIN bills ON items.bill_id = bills.bill_id '
+      'WHERE bills.account_id = ? AND bills.bill_date >= ? GROUP BY month, category ORDER BY total DESC',
+      [account_id, from],
     );
   }
 
@@ -213,18 +339,40 @@ Future<int> addBill(Map<String, dynamic> bill) async {
       };
   }
 
-  // Latest non-empty bills and deposits together, newest first.
+  // Latest non-empty bills, deposits and transfers together, newest first.
+  // type is 'bill', 'deposite', 'transfer_out' or 'transfer_in'; for transfers
+  // other_account is the name of the account on the other side.
   Future<List<Map<String, dynamic>>> getRecentActivity(int account_id, {int limit = 5}) async {
       final db = await database;
       return await db.rawQuery(
-        "SELECT 'bill' AS type, bill_id AS id, bill_date AS date, total_price AS amount "
+        "SELECT 'bill' AS type, bill_id AS id, bill_date AS date, total_price AS amount, "
+        "NULL AS note, NULL AS other_account "
         "FROM bills WHERE account_id = ? AND total_price != 0 "
         "UNION ALL "
-        "SELECT 'deposite' AS type, deposites_id AS id, deposite_date AS date, deposite_balance AS amount "
+        "SELECT 'deposite' AS type, deposites_id AS id, deposite_date AS date, deposite_balance AS amount, "
+        "note, NULL AS other_account "
         "FROM deposites WHERE account_id = ? "
+        "UNION ALL "
+        "SELECT 'transfer_out' AS type, transfer_id AS id, transfer_date AS date, amount, note, "
+        "(SELECT account_name FROM accounts WHERE account_id = to_account_id) AS other_account "
+        "FROM transfers WHERE from_account_id = ? "
+        "UNION ALL "
+        "SELECT 'transfer_in' AS type, transfer_id AS id, transfer_date AS date, amount, note, "
+        "(SELECT account_name FROM accounts WHERE account_id = from_account_id) AS other_account "
+        "FROM transfers WHERE to_account_id = ? "
         "ORDER BY date DESC, id DESC LIMIT ?",
-        [account_id, account_id, limit],
+        [account_id, account_id, account_id, account_id, limit],
       );
+  }
+
+  // Budget for the account and how much it has spent this month.
+  Future<Map<String, double?>> getBudgetStatus(int account_id) async {
+      final account = await getAccount(account_id);
+      final summary = await getMonthSummary(account_id);
+      return {
+        'budget': (account?['monthly_budget'] as num?)?.toDouble(),
+        'spent': summary['spent'],
+      };
   }
 
   // Saves the deposit and raises the account balance together.
@@ -261,7 +409,7 @@ Future<int> addBill(Map<String, dynamic> bill) async {
 
   // Changes an item. The bill total and the account balance move by the
   // difference between the new and the old price, in one transaction.
-  Future<void> updateItem(int item_id,int account_id,String name,int count,double price) async{
+  Future<void> updateItem(int item_id,int account_id,String name,int count,double price,String? category) async{
       final db = await database;
       await db.transaction((txn) async {
         final rows = await txn.query('items', where: 'item_id = ?', whereArgs: [item_id]);
@@ -272,7 +420,7 @@ Future<int> addBill(Map<String, dynamic> bill) async {
         final diff = price - oldPrice;
         await txn.update(
           'items',
-          {'item_name': name, 'item_count': count, 'item_price': price},
+          {'item_name': name, 'item_count': count, 'item_price': price, 'category': category},
           where: 'item_id = ?',
           whereArgs: [item_id],
         );
@@ -288,7 +436,7 @@ Future<int> addBill(Map<String, dynamic> bill) async {
   }
 
   // Changes a deposit's amount/date and moves the account balance by the difference.
-  Future<void> updateDeposite(int deposites_id,double amount,String date) async{
+  Future<void> updateDeposite(int deposites_id,double amount,String date,String? note) async{
       final db = await database;
       await db.transaction((txn) async {
         final rows = await txn.query('deposites', where: 'deposites_id = ?', whereArgs: [deposites_id]);
@@ -298,7 +446,7 @@ Future<int> addBill(Map<String, dynamic> bill) async {
         final diff = amount - (rows.first['deposite_balance'] as num).toDouble();
         await txn.update(
           'deposites',
-          {'deposite_balance': amount, 'deposite_date': date},
+          {'deposite_balance': amount, 'deposite_date': date, 'note': note},
           where: 'deposites_id = ?',
           whereArgs: [deposites_id],
         );
@@ -400,7 +548,7 @@ Future<int> addBill(Map<String, dynamic> bill) async {
   Future<List<Map<String, dynamic>>> getItemSuggestions(int account_id) async {
       final db = await database;
       final rows = await db.rawQuery(
-        'SELECT TRIM(item_name) AS name, item_count, item_price FROM items '
+        'SELECT TRIM(item_name) AS name, item_count, item_price, category FROM items '
         'JOIN bills ON items.bill_id = bills.bill_id WHERE bills.account_id = ? '
         'ORDER BY bills.bill_date DESC, items.item_id DESC LIMIT 1000',
         [account_id],
@@ -421,6 +569,7 @@ Future<int> addBill(Map<String, dynamic> bill) async {
         await txn.delete('items', where: 'bill_id IN (SELECT bill_id FROM bills WHERE account_id = ?)', whereArgs: [account_id]);
         await txn.delete('bills', where: 'account_id = ?', whereArgs: [account_id]);
         await txn.delete('deposites', where: 'account_id = ?', whereArgs: [account_id]);
+        await txn.delete('transfers', where: 'from_account_id = ? OR to_account_id = ?', whereArgs: [account_id, account_id]);
         await txn.delete('accounts', where: 'account_id = ?', whereArgs: [account_id]);
       });
   }
