@@ -1,10 +1,14 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   static Database? _database;
+  static const List<String> _requiredTables = ['accounts', 'bills', 'items', 'deposites'];
 
   factory DatabaseHelper() {
     return _instance;
@@ -18,10 +22,23 @@ class DatabaseHelper {
     _database = await _initDatabase();
     return _database!;
   }
-    Future<Database> _initDatabase() async {
-    // Get the path to the documents directory
+
+  Future<String> _databaseFilePath() async {
     final databasePath = await getDatabasesPath();
-    final path = join(databasePath, 'my_database.db');
+    return join(databasePath, 'my_database.db');
+  }
+
+  // Closes the open connection so the database file on disk is complete.
+  // The next call to `database` reopens it.
+  Future<void> closeDatabase() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
+  }
+
+    Future<Database> _initDatabase() async {
+    final path = await _databaseFilePath();
 
     // Open the database and create   tables
     return await openDatabase(
@@ -139,6 +156,11 @@ Future<int> addBill(Map<String, dynamic> bill) async {
       return formattedDate;
   }
 
+  // Rounds to 2 decimals for display, e.g. 12.300000000001 -> 12.3
+  String formatMoney(num? value){
+      return NumberFormat('#,##0.##').format(value ?? 0);
+  }
+
   Future<int> addItem(Map<String, dynamic> item) async {
   final db = await database;
   return await db.insert(
@@ -151,86 +173,113 @@ Future<int> addBill(Map<String, dynamic> bill) async {
       final db = await database;
       return await db.query('items',where: 'bill_id = ?',whereArgs: [id]);
   }
-  Future<bool> updateBalance(int bill_id,int account_id,double price) async{
+  // Adds the item, raises the bill total and lowers the account balance
+  // together: either all three are saved or none of them.
+  Future<void> addItemToBill(Map<String, dynamic> item,int account_id,double price) async{
       final db = await database;
-      Map<String,dynamic>? bill = await getBillById(bill_id);
-      Map<String,dynamic>? account = await getAccount(account_id);
-      if(bill ==null||account==null){
-        return false;
-      }
-      double newBill =  bill['total_price']+price;
-      double newAccount =  account["account_balance"]-price ;
-      db.update(
-    'bills',
-    {
-      'total_price': newBill,
-    },
-    where: 'bill_id = ?',
-    whereArgs: [bill_id],
-  );
-  db.update(
-    'accounts',
-    {
-      'account_balance': newAccount,
-    },
-    where: 'account_id = ?',
-    whereArgs: [account_id],
-  );
-  return true;
+      await db.transaction((txn) async {
+        await txn.insert('items', item);
+        await txn.rawUpdate(
+          'UPDATE bills SET total_price = ROUND(total_price + ?, 2) WHERE bill_id = ?',
+          [price, item['bill_id']],
+        );
+        await txn.rawUpdate(
+          'UPDATE accounts SET account_balance = ROUND(account_balance - ?, 2) WHERE account_id = ?',
+          [price, account_id],
+        );
+      });
   }
-  
+
     Future<List<Map<String,dynamic>>> getDeposites(int account_id) async{
       final db = await database;
       return await db.query('deposites',where: 'account_id = ?',whereArgs: [account_id]);
   }
 
-    Future<int> addDeposite(Map<String, dynamic> deposite) async {
+  // Saves the deposit and raises the account balance together.
+  Future<void> addDeposite(Map<String, dynamic> deposite) async {
   final db = await database;
-  return await db.insert(
-    'deposites', // The name of your table
-    deposite,    // The data to insert
-    conflictAlgorithm: ConflictAlgorithm.replace, // Optional but recommended
-  );
+  await db.transaction((txn) async {
+    await txn.insert('deposites', deposite);
+    await txn.rawUpdate(
+      'UPDATE accounts SET account_balance = ROUND(account_balance + ?, 2) WHERE account_id = ?',
+      [deposite['deposite_balance'], deposite['account_id']],
+    );
+  });
 }
-  Future<bool> updateBalanceAcc(int account_id,double balance) async{
-      final db = await database;
-      Map<String,dynamic>? account = await getAccount(account_id);
-      if(account==null){
-        return false;
-      }
-      double newAccount =  account["account_balance"]+balance ;
-  db.update(
-    'accounts',
-    {
-      'account_balance': newAccount,
-    },
-    where: 'account_id = ?',
-    whereArgs: [account_id],
-  );
-  return true;
-  }
-Future<bool> updateBill(int bill_id,double balance) async{
-      final db = await database;
-      Map<String,dynamic>? bill = await getBillById(bill_id);
-      if(bill==null){
-        return false;
-      }
-      double newAccount =  bill["total_price"]-balance ;
-  db.update(
-    'bills',
-    {
-      'total_price': newAccount,
-    },
-    where: 'bill_id = ?',
-    whereArgs: [bill_id],
-  );
-  return true;
-  }
+
+  // Removes the item and gives its price back to the bill and the account,
+  // all in one transaction.
   Future<void> deleteItem(int item_id,int account_id,int bill_id,double price)async{
       final db = await database;
-      if( await db.delete("items",where: "item_id = ?",whereArgs: [item_id])>=1){
-        updateBalanceAcc(account_id,price);
-        updateBill(bill_id,price);
+      await db.transaction((txn) async {
+        final deleted = await txn.delete("items",where: "item_id = ?",whereArgs: [item_id]);
+        if (deleted < 1) {
+          return;
+        }
+        await txn.rawUpdate(
+          'UPDATE bills SET total_price = ROUND(total_price - ?, 2) WHERE bill_id = ?',
+          [price, bill_id],
+        );
+        await txn.rawUpdate(
+          'UPDATE accounts SET account_balance = ROUND(account_balance + ?, 2) WHERE account_id = ?',
+          [price, account_id],
+        );
+      });
+  }
+
+  // Copies the database to a temporary file named with today's date and
+  // returns its path, ready to be shared.
+  Future<String> exportBackup() async {
+      await closeDatabase();
+      final source = File(await _databaseFilePath());
+      final tempDir = await getTemporaryDirectory();
+      final stamp = DateFormat('yyyy-MM-dd_HH-mm').format(DateTime.now());
+      final backupPath = join(tempDir.path, 'money_backup_$stamp.db');
+      await source.copy(backupPath);
+      return backupPath;
+  }
+
+  // Replaces the current data with a backup file. The file is checked first,
+  // and the current database is kept as my_database_before_restore.db.
+  // Returns false (and changes nothing) if the file is not a valid backup.
+  Future<bool> restoreBackup(Uint8List bytes) async {
+      final tempDir = await getTemporaryDirectory();
+      final candidate = File(join(tempDir.path, 'restore_candidate.db'));
+      await candidate.writeAsBytes(bytes, flush: true);
+
+      if (!await _isValidBackup(candidate.path)) {
+        await candidate.delete();
+        return false;
+      }
+
+      await closeDatabase();
+      final path = await _databaseFilePath();
+      final current = File(path);
+      if (await current.exists()) {
+        await current.copy(join(dirname(path), 'my_database_before_restore.db'));
+      }
+      for (final suffix in ['-wal', '-shm', '-journal']) {
+        final leftover = File('$path$suffix');
+        if (await leftover.exists()) {
+          await leftover.delete();
+        }
+      }
+      await candidate.copy(path);
+      await candidate.delete();
+      return true;
+  }
+
+  Future<bool> _isValidBackup(String path) async {
+      Database? db;
+      try {
+        db = await openDatabase(path, readOnly: true, singleInstance: false);
+        final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'");
+        final names = tables.map((t) => t['name']).toSet();
+        return _requiredTables.every(names.contains);
+      } catch (_) {
+        return false;
+      } finally {
+        await db?.close();
       }
   }
 }

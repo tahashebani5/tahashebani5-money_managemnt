@@ -49,7 +49,7 @@ class _HomepageState extends State<Homepage> {
                         ),
                         Text(
                           'الرصيد\n' +
-                              account['account_balance'].toString() +
+                              DatabaseHelper().formatMoney(account['account_balance']) +
                               '\$',
                           style: TextStyle(fontSize: 25, color: Colors.white),
                         ),
@@ -88,18 +88,22 @@ class _HomepageState extends State<Homepage> {
                           DateTime.now(),
                         ),
                       };
-                      DatabaseHelper().addBill(bill);
+                      await DatabaseHelper().addBill(bill);
                     }
                     final Map<String, dynamic>? bill= await DatabaseHelper().getBill(widget.acccount_id, DatabaseHelper().formatDate(DateTime.now()));
+                    if (bill == null || !context.mounted) return;
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => Billpage(
                           account_id: widget.acccount_id,
                           date: DatabaseHelper().formatDate(DateTime.now()),
-                          bill_id: bill?['bill_id'],
+                          bill_id: bill['bill_id'],
                         ),
                       ),
-                    );
+                    ).then((_) {
+                      // Refresh the balance shown at the top
+                      setState(() {});
+                    });
                   },
                   child: Text('فاتورة اليوم', style: TextStyle(fontSize: 30)),
                 ),
@@ -117,7 +121,9 @@ class _HomepageState extends State<Homepage> {
                         builder: (context) =>
                             Previesbillspage(account_id: widget.acccount_id),
                       ),
-                    );
+                    ).then((_) {
+                      setState(() {});
+                    });
                   },
                   child: Text(
                     'الفواتير السابقة',
@@ -138,7 +144,9 @@ class _HomepageState extends State<Homepage> {
                         builder: (context) =>
                             Depositepage(account_id: widget.acccount_id),
                       ),
-                    );
+                    ).then((_) {
+                      setState(() {});
+                    });
                   },
                   child: Text(' إضافة رصيد', style: TextStyle(fontSize: 30)),
                 ),

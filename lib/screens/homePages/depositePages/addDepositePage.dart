@@ -15,6 +15,7 @@ class _AdddepositepageState extends State<Adddepositepage> {
 
   @override
   void dispose() {
+    account_balance_field.dispose();
     super.dispose();
   }
 
@@ -71,7 +72,7 @@ class _AdddepositepageState extends State<Adddepositepage> {
                         'deposite_date':DatabaseHelper().formatDate(DateTime.now())
                       };
                        await DatabaseHelper().addDeposite(balance );
-                       await DatabaseHelper().updateBalanceAcc(widget.account_id, double.parse(account_balance_field.text));
+                       if (!context.mounted) return;
                        Navigator.of(context).pop();
                     }
                   },

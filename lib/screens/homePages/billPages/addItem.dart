@@ -109,10 +109,8 @@ class _AdditemState extends State<Additem> {
                         'item_price':double.tryParse(item_price_field.text),
                         'item_count':int.tryParse(item_count_field.text)
                       };
-                      if(await DatabaseHelper().updateBalance(widget.bill_id,widget.account_id, double.parse(item_price_field.text))){
-                          
-                        await DatabaseHelper().addItem(item);
-                      }
+                      await DatabaseHelper().addItemToBill(item, widget.account_id, double.parse(item_price_field.text));
+                     if (!context.mounted) return;
                      final result= {'account_id':widget.account_id,'bill_id':widget.bill_id,'date':widget.date};
                       Navigator.of(context).pop(result);
                     }

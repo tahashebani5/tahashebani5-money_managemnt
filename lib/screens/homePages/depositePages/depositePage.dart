@@ -48,7 +48,7 @@ class _DepositepageState extends State<Depositepage> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              deposite['deposite_balance'].toString() + '\$',
+                              DatabaseHelper().formatMoney(deposite['deposite_balance']) + '\$',
                               style: TextStyle(fontSize: 20),
                             ),
                             Text(

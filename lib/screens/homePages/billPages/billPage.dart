@@ -65,7 +65,7 @@ class _BillpageState extends State<Billpage> {
                           Text(
                             'ألاجمالي' +
                                 ': \$' +
-                                bill['total_price'].toString(),
+                                DatabaseHelper().formatMoney(bill['total_price']),
                             style: TextStyle(fontSize: 25, color: Colors.white),
                           ),
                         ],
@@ -115,13 +115,14 @@ class _BillpageState extends State<Billpage> {
                             children: [
                               SlidableAction(
                                 borderRadius: BorderRadius.circular(10),
-                                onPressed: (context) {
-                                  DatabaseHelper().deleteItem(
+                                onPressed: (context) async {
+                                  await DatabaseHelper().deleteItem(
                                     item["item_id"],
                                     account_id,
                                     bill_id,
-                                    item["item_price"],
+                                    (item["item_price"] as num).toDouble(),
                                   );
+                                  if (!mounted) return;
                                   setState(() {});
                                 },
                                 icon: Icons.delete,
@@ -139,7 +140,7 @@ class _BillpageState extends State<Billpage> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  item['item_price'].toString() + '\$',
+                                  DatabaseHelper().formatMoney(item['item_price']) + '\$',
                                   style: TextStyle(fontSize: 20),
                                 ),
                                 Text(
@@ -190,12 +191,10 @@ class _BillpageState extends State<Billpage> {
                               ),
                             ),
                           )
-                          .then((result) {
-                            setState(() {
-                              account_id = result['account_id'];
-                              bill_id = result['bill_id'];
-                              date = result['date'];
-                            });
+                          .then((_) {
+                            // Result is null when the user cancels; the ids
+                            // never change here, so just reload the bill.
+                            setState(() {});
                           });
                     },
                     child: Text(

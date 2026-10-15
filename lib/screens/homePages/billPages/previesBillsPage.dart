@@ -45,7 +45,10 @@ class _PreviesbillspageState extends State<Previesbillspage> {
                           bill_id: bill['bill_id'],
                         ),
                       ),
-                    );
+                    ).then((_) {
+                      // Totals may have changed inside the bill
+                      setState(() {});
+                    });
                       },
                       child: Column(
                         children: [
@@ -54,7 +57,7 @@ class _PreviesbillspageState extends State<Previesbillspage> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(bill['total_price'].toString()+'\$', style: TextStyle(fontSize: 20)),
+                                Text(DatabaseHelper().formatMoney(bill['total_price'])+'\$', style: TextStyle(fontSize: 20)),
                                 Text(bill['bill_date'].toString(), style: TextStyle(fontSize: 20))
                               ],
                             ),
