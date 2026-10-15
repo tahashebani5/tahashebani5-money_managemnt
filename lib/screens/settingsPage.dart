@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/Database_Services.dart';
 import '../services/appLock.dart';
+import 'categoriesPage.dart';
 import '../widgets/backupActions.dart';
 import '../widgets/commonWidgets.dart';
 import '../widgets/pinPad.dart';
@@ -144,11 +145,24 @@ class _SettingspageState extends State<Settingspage> {
                 ),
                 const SectionHeader(title: 'العرض'),
                 Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.currency_exchange),
-                    title: const Text('العملة'),
-                    trailing: Text(ltr(currencySymbol), style: const TextStyle(fontSize: 18)),
-                    onTap: _chooseCurrency,
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.currency_exchange),
+                        title: const Text('العملة'),
+                        trailing: Text(ltr(currencySymbol), style: const TextStyle(fontSize: 18)),
+                        onTap: _chooseCurrency,
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.category_outlined),
+                        title: const Text('الفئات'),
+                        subtitle: const Text('أضف فئاتك الخاصة للمشتريات'),
+                        trailing: const Icon(Icons.chevron_right), // mirrored to point left in RTL
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (context) => const Categoriespage()),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SectionHeader(title: 'النسخ الاحتياطي'),

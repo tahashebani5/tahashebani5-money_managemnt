@@ -230,7 +230,7 @@ class _RecurringFormState extends State<_RecurringForm> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final category in itemCategories)
+                for (final category in allCategories)
                   ChoiceChip(
                     avatar: Icon(category.icon, size: 18),
                     label: Text(category.label),

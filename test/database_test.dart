@@ -116,6 +116,23 @@ void main() {
     expect(await _balance(a), 1000.0);
   });
 
+  test('deleting a custom category leaves its items uncategorised', () async {
+    final db = DatabaseHelper();
+    final a = await db.addAccount({'account_name': 'a', 'account_balance': 100.0});
+    await db.addCustomCategory('قهوة', 'coffee');
+    final key = (await db.getCustomCategories()).single['category_key'] as String;
+    final bill = await db.getOrCreateBill(a, '2026-10-15');
+    await db.addItemToBill({'bill_id': bill, 'item_name': 'latte', 'item_price': 5.0, 'item_count': 1, 'category': key}, a, 5);
+    await db.updateCustomCategory(key, 'كافيه', 'coffee');
+    expect((await db.getCustomCategories()).single['label'], 'كافيه');
+    await db.deleteCustomCategory(key);
+    expect(await db.getCustomCategories(), isEmpty);
+    final item = (await db.getItems(bill)).single;
+    expect(item['item_name'], 'latte');
+    expect(item['category'], isNull);
+    expect(await _balance(a), 95.0);
+  });
+
   test('first recurring date is this month if the day has not passed', () {
     final db = DatabaseHelper();
     expect(db.firstRecurringDate(25, now: DateTime(2026, 10, 15)), '2026-10-25');

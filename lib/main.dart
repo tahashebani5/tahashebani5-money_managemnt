@@ -9,8 +9,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     currencySymbol = await DatabaseHelper().getSetting('currency') ?? currencySymbol;
+    await loadCustomCategories();
   } catch (_) {
-    // Keep the default currency; the app still opens
+    // Keep the defaults; the app still opens
   }
   runApp(const MyApp());
 }

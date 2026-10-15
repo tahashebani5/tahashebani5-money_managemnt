@@ -412,6 +412,40 @@ class DatabaseHelper {
     await db.delete('goals', where: 'goal_id = ?', whereArgs: [goal_id]);
   }
 
+  // ---- User-defined item categories (besides the built-in ones) ----
+
+  Future<List<Map<String, dynamic>>> getCustomCategories() async {
+    final db = await database;
+    return await db.query('custom_categories', orderBy: 'position, category_key');
+  }
+
+  Future<void> addCustomCategory(String label, String iconKey) async {
+    final db = await database;
+    final rows = await db.rawQuery('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM custom_categories');
+    await db.insert('custom_categories', {
+      'category_key': 'c_${DateTime.now().microsecondsSinceEpoch}',
+      'label': label,
+      'icon_key': iconKey,
+      'position': rows.first['next'],
+    });
+  }
+
+  Future<void> updateCustomCategory(String key, String label, String iconKey) async {
+    final db = await database;
+    await db.update('custom_categories', {'label': label, 'icon_key': iconKey},
+        where: 'category_key = ?', whereArgs: [key]);
+  }
+
+  // Deletes the category; its items and recurring expenses become uncategorised.
+  Future<void> deleteCustomCategory(String key) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.update('items', {'category': null}, where: 'category = ?', whereArgs: [key]);
+      await txn.update('recurring', {'category': null}, where: 'category = ?', whereArgs: [key]);
+      await txn.delete('custom_categories', where: 'category_key = ?', whereArgs: [key]);
+    });
+  }
+
   Future<void> _addColumnIfMissing(DatabaseExecutor db, String table, String column, String type) async {
     final columns = await db.rawQuery('PRAGMA table_info($table)');
     if (columns.any((c) => c['name'] == column)) {

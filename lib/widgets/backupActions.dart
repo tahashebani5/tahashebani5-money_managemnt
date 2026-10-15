@@ -50,6 +50,7 @@ Future<bool> restoreBackupFlow(BuildContext context) async {
     }
     // The backup carries its own settings, e.g. the currency
     currencySymbol = await DatabaseHelper().getSetting('currency') ?? '\$';
+    await loadCustomCategories();
     messenger.showSnackBar(const SnackBar(content: Text('تمت استعادة البيانات بنجاح')));
     return true;
   } catch (_) {

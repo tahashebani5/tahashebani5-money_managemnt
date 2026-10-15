@@ -43,9 +43,52 @@ const List<ItemCategory> itemCategories = [
 
 const ItemCategory noCategory = ItemCategory('', 'بدون تصنيف', Icons.shopping_bag_outlined);
 
-// Old items (saved before categories existed) have no category.
+// Icons users can pick for their own categories. Stored by key (not by
+// code point) so icon tree-shaking in release builds keeps working.
+const Map<String, IconData> categoryIconChoices = {
+  'label': Icons.label_outline,
+  'coffee': Icons.local_cafe,
+  'smoking': Icons.smoking_rooms,
+  'child': Icons.child_care,
+  'school': Icons.school,
+  'pets': Icons.pets,
+  'gift': Icons.card_giftcard,
+  'phone': Icons.phone_android,
+  'fuel': Icons.local_gas_station,
+  'travel': Icons.flight,
+  'sports': Icons.sports_soccer,
+  'beauty': Icons.face_retouching_natural,
+  'tools': Icons.build,
+  'book': Icons.menu_book,
+  'games': Icons.sports_esports,
+  'charity': Icons.volunteer_activism,
+  'water': Icons.water_drop,
+  'electric': Icons.bolt,
+  'market': Icons.storefront,
+  'work': Icons.work_outline,
+};
+
+// The user's own categories, loaded from the database at start-up.
+List<ItemCategory> customCategories = [];
+
+List<ItemCategory> get allCategories => [...itemCategories, ...customCategories];
+
+Future<void> loadCustomCategories() async {
+  final rows = await DatabaseHelper().getCustomCategories();
+  customCategories = [
+    for (final row in rows)
+      ItemCategory(
+        row['category_key'] as String,
+        row['label'] as String,
+        categoryIconChoices[row['icon_key']] ?? Icons.label_outline,
+      ),
+  ];
+}
+
+// Old items (saved before categories existed) and items of a deleted
+// category have no category.
 ItemCategory categoryOf(String? key) =>
-    itemCategories.firstWhere((c) => c.key == key, orElse: () => noCategory);
+    allCategories.firstWhere((c) => c.key == key, orElse: () => noCategory);
 
 // DateTime.weekday: Monday = 1 ... Sunday = 7
 const List<String> arabicWeekdays = [
