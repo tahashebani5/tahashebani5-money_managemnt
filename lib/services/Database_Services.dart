@@ -41,7 +41,9 @@ class DatabaseHelper {
   // 1 - accounts, bills, items, deposites
   // 2 - items.category, deposites.note, accounts.monthly_budget,
   //     transfers and settings tables (old rows are kept, new columns empty)
-  static const int _dbVersion = 2;
+  // 3 - debts, debt_payments, recurring, goals, custom_categories and
+  //     bill_photos tables (new tables only)
+  static const int _dbVersion = 3;
 
     Future<Database> _initDatabase() async {
     final path = await _databaseFilePath();
@@ -54,6 +56,9 @@ class DatabaseHelper {
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await _upgradeToV2(db);
+        }
+        if (oldVersion < 3) {
+          await _upgradeToV3(db);
         }
       },
       onCreate: (db, version) async{
@@ -70,6 +75,7 @@ class DatabaseHelper {
           "CREATE TABLE deposites(deposites_id INTEGER PRIMARY KEY,account_id INTEGER , deposite_balance REAL,deposite_date TEXT,FOREIGN KEY (account_id) REFERENCES accounts(accounts_id))",
         );
         await _upgradeToV2(db);
+        await _upgradeToV3(db);
       },
     );
   }
@@ -102,6 +108,159 @@ class DatabaseHelper {
       'to_account_id INTEGER, amount REAL, transfer_date TEXT, note TEXT)',
     );
     await db.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT)');
+  }
+
+  // Only adds tables; existing rows are never changed.
+  Future<void> _upgradeToV3(DatabaseExecutor db) async {
+    // direction: 'i_owe' (عليّ) or 'owed_to_me' (لي)
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS debts(debt_id INTEGER PRIMARY KEY, account_id INTEGER, person TEXT, '
+      'direction TEXT, amount REAL, debt_date TEXT, due_date TEXT, note TEXT, '
+      'counts_in_balance INTEGER DEFAULT 1, settled INTEGER DEFAULT 0)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS debt_payments(payment_id INTEGER PRIMARY KEY, debt_id INTEGER, '
+      'amount REAL, payment_date TEXT)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS recurring(recurring_id INTEGER PRIMARY KEY, account_id INTEGER, name TEXT, '
+      'amount REAL, category TEXT, day_of_month INTEGER, next_date TEXT, active INTEGER DEFAULT 1)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS goals(goal_id INTEGER PRIMARY KEY, account_id INTEGER, name TEXT, '
+      'target REAL, saved REAL DEFAULT 0, deadline TEXT, created_date TEXT)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS custom_categories(category_key TEXT PRIMARY KEY, label TEXT, '
+      'icon_key TEXT, position INTEGER)',
+    );
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS bill_photos(photo_id INTEGER PRIMARY KEY, bill_id INTEGER, '
+      'file_name TEXT, added_date TEXT)',
+    );
+  }
+
+  static const String debtIOwe = 'i_owe';
+  static const String debtOwedToMe = 'owed_to_me';
+
+  // How creating a debt moves the balance: borrowing (i_owe) brings money
+  // in, lending (owed_to_me) takes it out. Payments move it the other way.
+  static double _debtCreationEffect(String direction, double amount) =>
+      direction == debtIOwe ? amount : -amount;
+
+  Future<List<Map<String, dynamic>>> getDebts(int account_id) async {
+    final db = await database;
+    return await db.rawQuery(
+      'SELECT debts.*, COALESCE((SELECT SUM(amount) FROM debt_payments '
+      'WHERE debt_payments.debt_id = debts.debt_id), 0) AS paid '
+      'FROM debts WHERE account_id = ? ORDER BY settled, debt_date DESC, debt_id DESC',
+      [account_id],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getDebtPayments(int debt_id) async {
+    final db = await database;
+    return await db.query('debt_payments', where: 'debt_id = ?', whereArgs: [debt_id],
+        orderBy: 'payment_date DESC, payment_id DESC');
+  }
+
+  // Amounts still open: {'i_owe': ..., 'owed_to_me': ...}
+  Future<Map<String, double>> getDebtTotals(int account_id) async {
+    final totals = {debtIOwe: 0.0, debtOwedToMe: 0.0};
+    for (final debt in await getDebts(account_id)) {
+      final left = (debt['amount'] as num).toDouble() - (debt['paid'] as num).toDouble();
+      final direction = debt['direction'] as String;
+      if (left > 0 && totals.containsKey(direction)) totals[direction] = totals[direction]! + left;
+    }
+    return totals;
+  }
+
+  // Saves a debt; when counts_in_balance is 1 the money also moves now.
+  Future<void> addDebt(Map<String, dynamic> debt) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.insert('debts', debt);
+      if (debt['counts_in_balance'] == 1) {
+        await txn.rawUpdate(
+          'UPDATE accounts SET account_balance = ROUND(account_balance + ?, 2) WHERE account_id = ?',
+          [_debtCreationEffect(debt['direction'] as String, (debt['amount'] as num).toDouble()), debt['account_id']],
+        );
+      }
+    });
+  }
+
+  // Records a (partial) payment, moves the balance and marks the debt
+  // settled once fully paid.
+  Future<void> addDebtPayment(int debt_id, double amount, String date) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final rows = await txn.query('debts', where: 'debt_id = ?', whereArgs: [debt_id]);
+      if (rows.isEmpty) return;
+      final debt = rows.first;
+      await txn.insert('debt_payments', {'debt_id': debt_id, 'amount': amount, 'payment_date': date});
+      await txn.rawUpdate(
+        'UPDATE accounts SET account_balance = ROUND(account_balance - ?, 2) WHERE account_id = ?',
+        [_debtCreationEffect(debt['direction'] as String, amount), debt['account_id']],
+      );
+      await _updateDebtSettled(txn, debt_id);
+    });
+  }
+
+  Future<void> deleteDebtPayment(int payment_id) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final rows = await txn.rawQuery(
+        'SELECT debt_payments.*, debts.direction, debts.account_id FROM debt_payments '
+        'JOIN debts ON debts.debt_id = debt_payments.debt_id WHERE payment_id = ?',
+        [payment_id],
+      );
+      if (rows.isEmpty) return;
+      final payment = rows.first;
+      await txn.delete('debt_payments', where: 'payment_id = ?', whereArgs: [payment_id]);
+      await txn.rawUpdate(
+        'UPDATE accounts SET account_balance = ROUND(account_balance + ?, 2) WHERE account_id = ?',
+        [
+          _debtCreationEffect(payment['direction'] as String, (payment['amount'] as num).toDouble()),
+          payment['account_id'],
+        ],
+      );
+      await _updateDebtSettled(txn, payment['debt_id'] as int);
+    });
+  }
+
+  // Deletes a debt with its payments and undoes every balance change they made.
+  Future<void> deleteDebt(int debt_id) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final rows = await txn.query('debts', where: 'debt_id = ?', whereArgs: [debt_id]);
+      if (rows.isEmpty) return;
+      final debt = rows.first;
+      final direction = debt['direction'] as String;
+      final paidRows = await txn.rawQuery(
+        'SELECT COALESCE(SUM(amount), 0) AS paid FROM debt_payments WHERE debt_id = ?',
+        [debt_id],
+      );
+      final paid = (paidRows.first['paid'] as num).toDouble();
+      var change = _debtCreationEffect(direction, paid); // undo the payments
+      if (debt['counts_in_balance'] == 1) {
+        change -= _debtCreationEffect(direction, (debt['amount'] as num).toDouble()); // undo the creation
+      }
+      await txn.delete('debt_payments', where: 'debt_id = ?', whereArgs: [debt_id]);
+      await txn.delete('debts', where: 'debt_id = ?', whereArgs: [debt_id]);
+      await txn.rawUpdate(
+        'UPDATE accounts SET account_balance = ROUND(account_balance + ?, 2) WHERE account_id = ?',
+        [change, debt['account_id']],
+      );
+    });
+  }
+
+  Future<void> _updateDebtSettled(DatabaseExecutor txn, int debt_id) async {
+    await txn.rawUpdate(
+      'UPDATE debts SET settled = CASE WHEN COALESCE((SELECT SUM(amount) FROM debt_payments '
+      'WHERE debt_payments.debt_id = debts.debt_id), 0) >= amount - 0.001 THEN 1 ELSE 0 END '
+      'WHERE debt_id = ?',
+      [debt_id],
+    );
   }
 
   Future<void> _addColumnIfMissing(DatabaseExecutor db, String table, String column, String type) async {
@@ -574,6 +733,10 @@ Future<int> addBill(Map<String, dynamic> bill) async {
         await txn.delete('bills', where: 'account_id = ?', whereArgs: [account_id]);
         await txn.delete('deposites', where: 'account_id = ?', whereArgs: [account_id]);
         await txn.delete('transfers', where: 'from_account_id = ? OR to_account_id = ?', whereArgs: [account_id, account_id]);
+        await txn.delete('debt_payments', where: 'debt_id IN (SELECT debt_id FROM debts WHERE account_id = ?)', whereArgs: [account_id]);
+        await txn.delete('debts', where: 'account_id = ?', whereArgs: [account_id]);
+        await txn.delete('recurring', where: 'account_id = ?', whereArgs: [account_id]);
+        await txn.delete('goals', where: 'account_id = ?', whereArgs: [account_id]);
         await txn.delete('accounts', where: 'account_id = ?', whereArgs: [account_id]);
       });
   }

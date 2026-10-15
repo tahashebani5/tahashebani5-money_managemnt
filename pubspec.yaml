@@ -50,6 +50,7 @@ dev_dependencies:
     sdk: flutter
   flutter_launcher_icons: ^0.14.4
   flutter_lints: ^5.0.0
+  sqflite_common_ffi: ^2.4.4
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true

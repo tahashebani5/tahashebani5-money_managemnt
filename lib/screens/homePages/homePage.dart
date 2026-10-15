@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:money_management/screens/homePages/billPages/addItem.dart';
 import 'package:money_management/screens/homePages/billPages/billPage.dart';
+import 'package:money_management/screens/homePages/debtPages/debtsPage.dart';
 import 'package:money_management/screens/homePages/depositePages/addDepositePage.dart';
 import 'package:money_management/screens/homePages/searchPage.dart';
 import 'package:money_management/screens/homePages/transferPage.dart';
@@ -227,6 +228,18 @@ class _HomepageState extends State<Homepage> {
                       icon: Icons.swap_horiz,
                       label: 'تحويل',
                       onTap: () => _open(Transferpage(account_id: widget.acccount_id)),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    _ActionTile(
+                      icon: Icons.handshake_outlined,
+                      label: 'الديون',
+                      onTap: () => _open(Debtspage(account_id: widget.acccount_id)),
                     ),
                   ],
                 ),
