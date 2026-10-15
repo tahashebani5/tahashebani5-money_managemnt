@@ -87,11 +87,18 @@ final List<TextInputFormatter> countInputFormatters = [
   FilteringTextInputFormatter.digitsOnly,
 ];
 
+// Brand teal, the same as the app icon.
+const Color brandColor = Color(0xFF0E8A73);
+// Background of the big balance cards (same gradient as the icon) and the
+// text colour on top of it. Used in light and dark mode alike.
+const List<Color> brandGradient = [Color(0xFF10967A), Color(0xFF08564C)];
+const Color onBrand = Colors.white;
+
 // Bar colour for charts; checked for contrast and colour-blind safety
 // against the app's light and dark backgrounds.
 Color chartColor(BuildContext context) => Theme.of(context).brightness == Brightness.dark
-    ? const Color(0xFF9085E9)
-    : const Color(0xFF6250D6);
+    ? const Color(0xFF3987E5)
+    : const Color(0xFF2A78D6);
 
 // Shows a date picker (no future dates) and returns "yyyy-MM-dd", or null if cancelled.
 Future<String?> pickDate(BuildContext context, {String? initial}) async {
@@ -184,13 +191,12 @@ class SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [scheme.primary, scheme.tertiary],
+        gradient: const LinearGradient(
+          colors: brandGradient,
           begin: AlignmentDirectional.topStart,
           end: AlignmentDirectional.bottomEnd,
         ),
@@ -199,11 +205,11 @@ class SummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: scheme.onPrimary.withValues(alpha: 0.85), fontSize: 16)),
+          Text(label, style: TextStyle(color: onBrand.withValues(alpha: 0.85), fontSize: 16)),
           const SizedBox(height: 6),
           Text(
             value,
-            style: TextStyle(color: scheme.onPrimary, fontSize: 34, fontWeight: FontWeight.bold),
+            style: const TextStyle(color: onBrand, fontSize: 34, fontWeight: FontWeight.bold),
           ),
           if (footer != null) ...[const SizedBox(height: 16), footer!],
         ],
@@ -227,8 +233,14 @@ class BudgetWarning extends StatelessWidget {
     }
     final scheme = Theme.of(context).colorScheme;
     final over = spent > limit;
-    final background = over ? scheme.errorContainer : scheme.tertiaryContainer;
-    final foreground = over ? scheme.onErrorContainer : scheme.onTertiaryContainer;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    // Amber for "almost there", the theme's error colours for "over"
+    final background = over
+        ? scheme.errorContainer
+        : (dark ? const Color(0xFF4A3A10) : const Color(0xFFFFF1D6));
+    final foreground = over
+        ? scheme.onErrorContainer
+        : (dark ? const Color(0xFFFFDFA0) : const Color(0xFF6B4A00));
     final message = over
         ? 'تجاوزت الميزانية الشهرية بمقدار ${moneyText(spent - limit)}'
         : 'اقتربت من الميزانية الشهرية: بقي ${moneyText(limit - spent)}';

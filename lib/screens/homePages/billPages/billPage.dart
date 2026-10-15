@@ -123,7 +123,7 @@ class _BillpageState extends State<Billpage> {
                   footer: Text(
                     '${items.length} عنصر',
                     style: TextStyle(
-                      color: scheme.onPrimary.withValues(alpha: 0.85),
+                      color: onBrand.withValues(alpha: 0.85),
                     ),
                   ),
                 ),

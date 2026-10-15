@@ -42,17 +42,18 @@ class _SearchpageState extends State<Searchpage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final text = _query.text.trim();
+    final barText = Theme.of(context).appBarTheme.foregroundColor ?? scheme.onPrimary;
     return Scaffold(
       appBar: AppBar(
         title: TextField(
           controller: _query,
           autofocus: true,
           onChanged: (_) => setState(() {}),
-          style: TextStyle(color: scheme.onPrimary, fontSize: 18),
-          cursorColor: scheme.onPrimary,
+          style: TextStyle(color: barText, fontSize: 18),
+          cursorColor: barText,
           decoration: InputDecoration(
             hintText: 'ابحث عن عنصر، مثلاً: خبز',
-            hintStyle: TextStyle(color: scheme.onPrimary.withValues(alpha: 0.7)),
+            hintStyle: TextStyle(color: barText.withValues(alpha: 0.7)),
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
@@ -96,7 +97,7 @@ class _SearchpageState extends State<Searchpage> {
                       value: moneyText(total),
                       footer: Text(
                         '${items.length} عملية شراء · الكمية الكلية $count',
-                        style: TextStyle(color: scheme.onPrimary.withValues(alpha: 0.85)),
+                        style: TextStyle(color: onBrand.withValues(alpha: 0.85)),
                       ),
                     ),
                     for (final item in items)

@@ -369,7 +369,7 @@ class _BudgetProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onPrimary = Theme.of(context).colorScheme.onPrimary;
+    const onPrimary = onBrand;
     final ratio = spent / budget;
     return Padding(
       padding: const EdgeInsets.only(top: 16),
@@ -404,7 +404,7 @@ class _MonthStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onPrimary = Theme.of(context).colorScheme.onPrimary;
+    const onPrimary = onBrand;
     return Row(
       children: [
         CircleAvatar(
@@ -436,10 +436,15 @@ class _ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    // Bright teal tiles in light mode; quiet dark tiles with teal icons in dark mode
+    final background = dark ? scheme.surfaceContainerHigh : scheme.primaryContainer;
+    final iconColor = dark ? scheme.primary : scheme.onPrimaryContainer;
+    final textColor = dark ? scheme.onSurface : scheme.onPrimaryContainer;
     return Expanded(
       child: Card(
         margin: const EdgeInsets.all(4),
-        color: scheme.primaryContainer,
+        color: background,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: onTap,
@@ -447,13 +452,13 @@ class _ActionTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 4),
             child: Column(
               children: [
-                Icon(icon, size: 32, color: scheme.onPrimaryContainer),
+                Icon(icon, size: 32, color: iconColor),
                 const SizedBox(height: 8),
                 Text(
                   label,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: scheme.onPrimaryContainer,
+                    color: textColor,
                     fontWeight: FontWeight.bold,
                   ),
                 ),

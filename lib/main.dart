@@ -18,21 +18,29 @@ class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   static ThemeData _theme(Brightness brightness) {
+    final dark = brightness == Brightness.dark;
     final scheme = ColorScheme.fromSeed(
-      seedColor: Colors.deepPurple,
+      seedColor: brandColor,
       brightness: brightness,
+      // Keeps the primary colour close to the brand teal instead of a muted tone
+      dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
     );
+    // Coloured header in light mode; a calm dark header in dark mode
+    final appBarBackground = dark ? scheme.surfaceContainer : scheme.primary;
+    final appBarForeground = dark ? scheme.onSurface : scheme.onPrimary;
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      fontFamily: 'Tajawal',
       appBarTheme: AppBarTheme(
-        backgroundColor: scheme.primary,
-        foregroundColor: scheme.onPrimary,
+        backgroundColor: appBarBackground,
+        foregroundColor: appBarForeground,
         centerTitle: true,
         titleTextStyle: TextStyle(
+          fontFamily: 'Tajawal',
           fontSize: 22,
           fontWeight: FontWeight.bold,
-          color: scheme.onPrimary,
+          color: appBarForeground,
         ),
       ),
       cardTheme: CardThemeData(
@@ -59,7 +67,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'إدارة الأموال',
+      title: 'محفظتي',
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
       themeMode: ThemeMode.system,
