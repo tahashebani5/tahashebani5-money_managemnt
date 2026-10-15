@@ -54,6 +54,25 @@ final List<TextInputFormatter> countInputFormatters = [
   FilteringTextInputFormatter.digitsOnly,
 ];
 
+// Bar colour for charts; checked for contrast and colour-blind safety
+// against the app's light and dark backgrounds.
+Color chartColor(BuildContext context) => Theme.of(context).brightness == Brightness.dark
+    ? const Color(0xFF9085E9)
+    : const Color(0xFF6250D6);
+
+// Shows a date picker (no future dates) and returns "yyyy-MM-dd", or null if cancelled.
+Future<String?> pickDate(BuildContext context, {String? initial}) async {
+  final now = DateTime.now();
+  final current = DateTime.tryParse(initial ?? '') ?? now;
+  final picked = await showDatePicker(
+    context: context,
+    initialDate: current.isAfter(now) ? now : current,
+    firstDate: DateTime(2000),
+    lastDate: now,
+  );
+  return picked == null ? null : DatabaseHelper().formatDate(picked);
+}
+
 String? requiredAmount(String? value) {
   final amount = double.tryParse(value ?? '');
   if (amount == null) return 'أدخل المبلغ';

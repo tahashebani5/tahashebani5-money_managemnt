@@ -6,7 +6,9 @@ class Additem extends StatefulWidget {
   final int bill_id;
   final int account_id;
   final String date;
-  Additem({Key? key, required this.bill_id,required this.account_id,required this.date});
+  // When set, the page edits this item instead of adding a new one
+  final Map<String, dynamic>? item;
+  Additem({Key? key, required this.bill_id,required this.account_id,required this.date, this.item});
 
   @override
   State<Additem> createState() => _AdditemState();
@@ -17,50 +19,126 @@ class _AdditemState extends State<Additem> {
   final item_name_field = TextEditingController();
   final item_price_field = TextEditingController();
   final item_count_field = TextEditingController(text: '1');
+  final _nameFocus = FocusNode();
+  List<Map<String, dynamic>> _suggestions = [];
   bool _saving = false;
+
+  bool get _isEdit => widget.item != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final item = widget.item;
+    if (item != null) {
+      item_name_field.text = item['item_name'].toString();
+      item_count_field.text = item['item_count'].toString();
+      item_price_field.text = DatabaseHelper().formatMoney(item['item_price']).replaceAll(',', '');
+    }
+    DatabaseHelper().getItemSuggestions(widget.account_id).then((rows) {
+      if (mounted) setState(() => _suggestions = rows);
+    });
+  }
 
   @override
   void dispose() {
     item_name_field.dispose();
     item_price_field.dispose();
     item_count_field.dispose();
+    _nameFocus.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     if (_saving || !_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
+    final name = item_name_field.text.trim();
+    final count = int.parse(item_count_field.text);
     final price = double.parse(item_price_field.text);
-    final Map<String, dynamic> item = {
-      'bill_id': widget.bill_id,
-      'item_name': item_name_field.text.trim(),
-      'item_price': price,
-      'item_count': int.parse(item_count_field.text),
-    };
-    await DatabaseHelper().addItemToBill(item, widget.account_id, price);
+    if (_isEdit) {
+      await DatabaseHelper().updateItem(widget.item!['item_id'], widget.account_id, name, count, price);
+    } else {
+      final Map<String, dynamic> item = {
+        'bill_id': widget.bill_id,
+        'item_name': name,
+        'item_price': price,
+        'item_count': count,
+      };
+      await DatabaseHelper().addItemToBill(item, widget.account_id, price);
+    }
     if (!mounted) return;
     Navigator.of(context).pop(true);
+  }
+
+  // Picking a suggestion also fills in the last count and price used for it.
+  void _useSuggestion(Map<String, dynamic> suggestion) {
+    item_name_field.text = suggestion['name'] as String;
+    item_count_field.text = suggestion['item_count'].toString();
+    item_price_field.text = DatabaseHelper().formatMoney(suggestion['item_price']).replaceAll(',', '');
+    FocusScope.of(context).unfocus();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('إضافة عنصر')),
+      appBar: AppBar(title: Text(_isEdit ? 'تعديل عنصر' : 'إضافة عنصر')),
       body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            TextFormField(
-              controller: item_name_field,
-              autofocus: true,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'اسم العنصر',
-                prefixIcon: Icon(Icons.shopping_bag_outlined),
-              ),
-              validator: (value) =>
-                  (value == null || value.trim().isEmpty) ? 'أدخل اسم العنصر' : null,
+            RawAutocomplete<Map<String, dynamic>>(
+              textEditingController: item_name_field,
+              focusNode: _nameFocus,
+              displayStringForOption: (option) => option['name'] as String,
+              optionsBuilder: (value) {
+                final text = value.text.trim().toLowerCase();
+                if (text.isEmpty) return const [];
+                return _suggestions
+                    .where((s) => (s['name'] as String).toLowerCase().contains(text))
+                    .take(6);
+              },
+              onSelected: _useSuggestion,
+              fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  autofocus: !_isEdit,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'اسم العنصر',
+                    prefixIcon: Icon(Icons.shopping_bag_outlined),
+                  ),
+                  validator: (value) =>
+                      (value == null || value.trim().isEmpty) ? 'أدخل اسم العنصر' : null,
+                );
+              },
+              optionsViewBuilder: (context, onSelected, options) {
+                return Align(
+                  alignment: AlignmentDirectional.topStart,
+                  child: Material(
+                    elevation: 4,
+                    borderRadius: BorderRadius.circular(12),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 280),
+                      child: ListView(
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        children: [
+                          for (final option in options)
+                            ListTile(
+                              leading: const Icon(Icons.history),
+                              title: Text(option['name'] as String),
+                              subtitle: Text(
+                                'آخر مرة: الكمية ${option['item_count']} بسعر ${moneyText(option['item_price'])}',
+                              ),
+                              onTap: () => onSelected(option),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -96,7 +174,7 @@ class _AdditemState extends State<Additem> {
             FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: const Icon(Icons.check),
-              label: const Text('حفظ'),
+              label: Text(_isEdit ? 'حفظ التعديل' : 'حفظ'),
             ),
           ],
         ),

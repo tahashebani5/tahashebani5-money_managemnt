@@ -76,13 +76,15 @@ class _BillpageState extends State<Billpage> {
     );
   }
 
-  Future<void> _addItem() async {
+  // Opens the item form; pass [item] to edit it instead of adding a new one.
+  Future<void> _openItemForm([Map<String, dynamic>? item]) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => Additem(
           bill_id: widget.bill_id,
           account_id: widget.account_id,
           date: widget.date,
+          item: item,
         ),
       ),
     );
@@ -132,7 +134,7 @@ class _BillpageState extends State<Billpage> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(24, 8, 24, 4),
                     child: Text(
-                      'اسحب العنصر لحذفه',
+                      'اضغط على العنصر لتعديله، أو اسحبه للتعديل أو الحذف',
                       style: TextStyle(
                         color: scheme.onSurfaceVariant,
                         fontSize: 12,
@@ -149,8 +151,17 @@ class _BillpageState extends State<Billpage> {
                     child: Slidable(
                       endActionPane: ActionPane(
                         motion: const StretchMotion(),
-                        extentRatio: 0.25,
+                        extentRatio: 0.5,
                         children: [
+                          SlidableAction(
+                            borderRadius: BorderRadius.circular(16),
+                            onPressed: (_) => _openItemForm(item),
+                            icon: Icons.edit,
+                            label: 'تعديل',
+                            backgroundColor: scheme.secondaryContainer,
+                            foregroundColor: scheme.onSecondaryContainer,
+                          ),
+                          const SizedBox(width: 6),
                           SlidableAction(
                             borderRadius: BorderRadius.circular(16),
                             onPressed: (_) => _deleteItem(item),
@@ -164,6 +175,7 @@ class _BillpageState extends State<Billpage> {
                       child: Card(
                         margin: EdgeInsets.zero,
                         child: ListTile(
+                          onTap: () => _openItemForm(item),
                           leading: CircleAvatar(
                             backgroundColor: scheme.secondaryContainer,
                             foregroundColor: scheme.onSecondaryContainer,
@@ -196,7 +208,7 @@ class _BillpageState extends State<Billpage> {
           },
         ),
         floatingActionButton: FloatingActionButton.extended(
-          onPressed: _addItem,
+          onPressed: () => _openItemForm(),
           icon: const Icon(Icons.add_shopping_cart),
           label: const Text('إضافة عنصر'),
         ),

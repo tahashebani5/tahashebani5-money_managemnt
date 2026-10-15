@@ -259,6 +259,181 @@ Future<int> addBill(Map<String, dynamic> bill) async {
       });
   }
 
+  // Changes an item. The bill total and the account balance move by the
+  // difference between the new and the old price, in one transaction.
+  Future<void> updateItem(int item_id,int account_id,String name,int count,double price) async{
+      final db = await database;
+      await db.transaction((txn) async {
+        final rows = await txn.query('items', where: 'item_id = ?', whereArgs: [item_id]);
+        if (rows.isEmpty) {
+          return;
+        }
+        final oldPrice = (rows.first['item_price'] as num).toDouble();
+        final diff = price - oldPrice;
+        await txn.update(
+          'items',
+          {'item_name': name, 'item_count': count, 'item_price': price},
+          where: 'item_id = ?',
+          whereArgs: [item_id],
+        );
+        await txn.rawUpdate(
+          'UPDATE bills SET total_price = ROUND(total_price + ?, 2) WHERE bill_id = ?',
+          [diff, rows.first['bill_id']],
+        );
+        await txn.rawUpdate(
+          'UPDATE accounts SET account_balance = ROUND(account_balance - ?, 2) WHERE account_id = ?',
+          [diff, account_id],
+        );
+      });
+  }
+
+  // Changes a deposit's amount/date and moves the account balance by the difference.
+  Future<void> updateDeposite(int deposites_id,double amount,String date) async{
+      final db = await database;
+      await db.transaction((txn) async {
+        final rows = await txn.query('deposites', where: 'deposites_id = ?', whereArgs: [deposites_id]);
+        if (rows.isEmpty) {
+          return;
+        }
+        final diff = amount - (rows.first['deposite_balance'] as num).toDouble();
+        await txn.update(
+          'deposites',
+          {'deposite_balance': amount, 'deposite_date': date},
+          where: 'deposites_id = ?',
+          whereArgs: [deposites_id],
+        );
+        await txn.rawUpdate(
+          'UPDATE accounts SET account_balance = ROUND(account_balance + ?, 2) WHERE account_id = ?',
+          [diff, rows.first['account_id']],
+        );
+      });
+  }
+
+  // Removes a deposit and takes its amount back out of the account balance.
+  Future<void> deleteDeposite(int deposites_id) async{
+      final db = await database;
+      await db.transaction((txn) async {
+        final rows = await txn.query('deposites', where: 'deposites_id = ?', whereArgs: [deposites_id]);
+        if (rows.isEmpty) {
+          return;
+        }
+        await txn.delete('deposites', where: 'deposites_id = ?', whereArgs: [deposites_id]);
+        await txn.rawUpdate(
+          'UPDATE accounts SET account_balance = ROUND(account_balance - ?, 2) WHERE account_id = ?',
+          [rows.first['deposite_balance'], rows.first['account_id']],
+        );
+      });
+  }
+
+  // Returns the id of the account's bill for [date] ("yyyy-MM-dd"),
+  // creating an empty bill if there is none yet.
+  Future<int> getOrCreateBill(int account_id,String date) async{
+      final db = await database;
+      return await db.transaction((txn) async {
+        final rows = await txn.query(
+          'bills',
+          columns: ['bill_id'],
+          where: 'account_id = ? AND bill_date = ?',
+          whereArgs: [account_id, date],
+          limit: 1,
+        );
+        if (rows.isNotEmpty) {
+          return rows.first['bill_id'] as int;
+        }
+        return await txn.insert('bills', {'account_id': account_id, 'total_price': 0.0, 'bill_date': date});
+      });
+  }
+
+  // Spent and deposited per month for the last [months] months (oldest first),
+  // e.g. [{'month': '2026-10', 'spent': 12.0, 'deposited': 500.0}, ...]
+  Future<List<Map<String, dynamic>>> getMonthlyTotals(int account_id, {int months = 6}) async {
+      final db = await database;
+      final now = DateTime.now();
+      final keys = [
+        for (var i = months - 1; i >= 0; i--)
+          DateFormat('yyyy-MM', 'en_US').format(DateTime(now.year, now.month - i)),
+      ];
+      final from = '${keys.first}-01';
+      final spent = await db.rawQuery(
+        'SELECT substr(bill_date, 1, 7) AS month, SUM(total_price) AS total FROM bills '
+        'WHERE account_id = ? AND bill_date >= ? GROUP BY month',
+        [account_id, from],
+      );
+      final deposited = await db.rawQuery(
+        'SELECT substr(deposite_date, 1, 7) AS month, SUM(deposite_balance) AS total FROM deposites '
+        'WHERE account_id = ? AND deposite_date >= ? GROUP BY month',
+        [account_id, from],
+      );
+      double totalFor(List<Map<String, Object?>> rows, String month) {
+        final row = rows.where((r) => r['month'] == month);
+        return row.isEmpty ? 0 : (row.first['total'] as num).toDouble();
+      }
+      return [
+        for (final month in keys)
+          {'month': month, 'spent': totalFor(spent, month), 'deposited': totalFor(deposited, month)},
+      ];
+  }
+
+  // Items the account spent the most on, all time.
+  Future<List<Map<String, dynamic>>> getTopItems(int account_id, {int limit = 5}) async {
+      final db = await database;
+      return await db.rawQuery(
+        'SELECT TRIM(item_name) AS name, SUM(item_price) AS total, SUM(item_count) AS count '
+        'FROM items JOIN bills ON items.bill_id = bills.bill_id '
+        'WHERE bills.account_id = ? GROUP BY TRIM(item_name) ORDER BY total DESC LIMIT ?',
+        [account_id, limit],
+      );
+  }
+
+  // Items whose name contains [query], newest first, with their bill date.
+  Future<List<Map<String, dynamic>>> searchItems(int account_id, String query) async {
+      final db = await database;
+      return await db.rawQuery(
+        'SELECT items.*, bills.bill_date FROM items JOIN bills ON items.bill_id = bills.bill_id '
+        'WHERE bills.account_id = ? AND instr(lower(items.item_name), lower(?)) > 0 '
+        'ORDER BY bills.bill_date DESC, items.item_id DESC',
+        [account_id, query.trim()],
+      );
+  }
+
+  // Previously used item names with their latest count and price, newest first.
+  Future<List<Map<String, dynamic>>> getItemSuggestions(int account_id) async {
+      final db = await database;
+      final rows = await db.rawQuery(
+        'SELECT TRIM(item_name) AS name, item_count, item_price FROM items '
+        'JOIN bills ON items.bill_id = bills.bill_id WHERE bills.account_id = ? '
+        'ORDER BY bills.bill_date DESC, items.item_id DESC LIMIT 1000',
+        [account_id],
+      );
+      final seen = <String>{};
+      return [
+        for (final row in rows)
+          if (seen.add(row['name'] as String)) row,
+      ];
+  }
+
+  // Deletes the account with all its bills, items and deposits.
+  // A copy of the whole database is kept first as my_database_before_delete.db.
+  Future<void> deleteAccount(int account_id) async {
+      await _saveSafetyCopy('my_database_before_delete.db');
+      final db = await database;
+      await db.transaction((txn) async {
+        await txn.delete('items', where: 'bill_id IN (SELECT bill_id FROM bills WHERE account_id = ?)', whereArgs: [account_id]);
+        await txn.delete('bills', where: 'account_id = ?', whereArgs: [account_id]);
+        await txn.delete('deposites', where: 'account_id = ?', whereArgs: [account_id]);
+        await txn.delete('accounts', where: 'account_id = ?', whereArgs: [account_id]);
+      });
+  }
+
+  Future<void> _saveSafetyCopy(String fileName) async {
+      await closeDatabase();
+      final path = await _databaseFilePath();
+      final current = File(path);
+      if (await current.exists()) {
+        await current.copy(join(dirname(path), fileName));
+      }
+  }
+
   // Copies the database to a temporary file named with today's date and
   // returns its path, ready to be shared.
   Future<String> exportBackup() async {
@@ -284,12 +459,8 @@ Future<int> addBill(Map<String, dynamic> bill) async {
         return false;
       }
 
-      await closeDatabase();
+      await _saveSafetyCopy('my_database_before_restore.db');
       final path = await _databaseFilePath();
-      final current = File(path);
-      if (await current.exists()) {
-        await current.copy(join(dirname(path), 'my_database_before_restore.db'));
-      }
       for (final suffix in ['-wal', '-shm', '-journal']) {
         final leftover = File('$path$suffix');
         if (await leftover.exists()) {

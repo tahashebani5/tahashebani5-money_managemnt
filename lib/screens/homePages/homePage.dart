@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:money_management/screens/homePages/billPages/billPage.dart';
 import 'package:money_management/screens/homePages/billPages/previesBillsPage.dart';
 import 'package:money_management/screens/homePages/depositePages/depositePage.dart';
+import 'package:money_management/screens/homePages/searchPage.dart';
+import 'package:money_management/screens/homePages/statisticsPage.dart';
 import '../../services/Database_Services.dart';
 import '../../widgets/commonWidgets.dart';
 
@@ -33,17 +36,71 @@ class _HomepageState extends State<Homepage> {
 
   Future<void> _openTodayBill() async {
     final today = DatabaseHelper().formatDate(DateTime.now());
-    if (await DatabaseHelper().isTodaysBill(DateTime.now(), widget.acccount_id)) {
-      final Map<String, dynamic> bill = {
-        'account_id': widget.acccount_id,
-        'total_price': 0.00,
-        'bill_date': today,
-      };
-      await DatabaseHelper().addBill(bill);
+    final billId = await DatabaseHelper().getOrCreateBill(widget.acccount_id, today);
+    if (!mounted) return;
+    _open(Billpage(account_id: widget.acccount_id, date: today, bill_id: billId));
+  }
+
+  // Deleting needs the account name typed in, and a backup is shared first.
+  Future<void> _deleteAccount(String name) async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('حذف الحساب'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'سيتم حذف الحساب "$name" مع كل فواتيره وإيداعاته نهائياً.\n\n'
+                'قبل الحذف ستظهر نافذة المشاركة لحفظ نسخة احتياطية.\n\n'
+                'للتأكيد اكتب اسم الحساب:',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                onChanged: (_) => setDialogState(() {}),
+                decoration: InputDecoration(hintText: name),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('إلغاء'),
+            ),
+            TextButton(
+              onPressed: controller.text.trim() == name.trim()
+                  ? () => Navigator.of(context).pop(true)
+                  : null,
+              style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+              child: const Text('حذف نهائياً'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final path = await DatabaseHelper().exportBackup();
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(path)], subject: 'نسخة احتياطية قبل حذف $name'),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('تعذر إنشاء النسخة الاحتياطية، لم يتم حذف الحساب')),
+      );
+      return;
     }
-    final Map<String, dynamic>? bill = await DatabaseHelper().getBill(widget.acccount_id, today);
-    if (bill == null || !mounted) return;
-    _open(Billpage(account_id: widget.acccount_id, date: today, bill_id: bill['bill_id']));
+    await DatabaseHelper().deleteAccount(widget.acccount_id);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    messenger.showSnackBar(SnackBar(content: Text('تم حذف الحساب "$name"')));
   }
 
   @override
@@ -65,7 +122,38 @@ class _HomepageState extends State<Homepage> {
         final recent = snapshot.data![2] as List<Map<String, dynamic>>;
 
         return Scaffold(
-          appBar: AppBar(title: Text(account['account_name'] as String)),
+          appBar: AppBar(
+            title: Text(account['account_name'] as String),
+            actions: [
+              IconButton(
+                tooltip: 'بحث',
+                icon: const Icon(Icons.search),
+                onPressed: () => _open(Searchpage(account_id: widget.acccount_id)),
+              ),
+              IconButton(
+                tooltip: 'الإحصائيات',
+                icon: const Icon(Icons.bar_chart),
+                onPressed: () => _open(Statisticspage(account_id: widget.acccount_id)),
+              ),
+              PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'delete') _deleteAccount(account['account_name'] as String);
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(
+                      leading: Icon(Icons.delete_forever, color: Theme.of(context).colorScheme.error),
+                      title: Text(
+                        'حذف الحساب',
+                        style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
           body: ListView(
             padding: const EdgeInsets.only(bottom: 24),
             children: [

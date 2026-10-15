@@ -31,10 +31,24 @@ class _PreviesbillspageState extends State<Previesbillspage> {
         });
   }
 
+  // Opens (or creates) the bill for a date the user picks.
+  Future<void> _openBillForDate() async {
+    final date = await pickDate(context);
+    if (date == null) return;
+    final billId = await DatabaseHelper().getOrCreateBill(widget.account_id, date);
+    if (!mounted) return;
+    _openBill({'bill_date': date, 'bill_id': billId});
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openBillForDate,
+        icon: const Icon(Icons.edit_calendar),
+        label: const Text('فاتورة بتاريخ آخر'),
+      ),
       appBar: AppBar(title: const Text('الفواتير السابقة')),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: DatabaseHelper().getBills(widget.account_id),
@@ -59,7 +73,7 @@ class _PreviesbillspageState extends State<Previesbillspage> {
           }
 
           return ListView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(bottom: 96),
             children: [
               for (final entry in months.entries) ...[
                 SectionHeader(
