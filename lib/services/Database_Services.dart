@@ -263,9 +263,13 @@ Future<int> addBill(Map<String, dynamic> bill) async {
         return null;
       }
   }
-    Future<List<Map<String,dynamic>>> getBills(int account_id) async{
+    // nonEmptyOnly hides bills that were opened but never got an item.
+    Future<List<Map<String,dynamic>>> getBills(int account_id, {bool nonEmptyOnly = false}) async{
       final db = await database;
-      return await db.query('bills' ,where: 'account_id = ?',whereArgs: [account_id], orderBy: 'bill_date DESC, bill_id DESC');
+      final empty = nonEmptyOnly
+          ? ' AND (total_price != 0 OR EXISTS (SELECT 1 FROM items WHERE items.bill_id = bills.bill_id))'
+          : '';
+      return await db.query('bills' ,where: 'account_id = ?$empty',whereArgs: [account_id], orderBy: 'bill_date DESC, bill_id DESC');
   }
 
       Future<Map<String,dynamic>?> getBillById(int id) async{

@@ -113,7 +113,7 @@ class _SearchpageState extends State<Searchpage> {
                             ),
                           ),
                           title: Text(item['item_name'].toString(), style: const TextStyle(fontSize: 18)),
-                          subtitle: Text(item['bill_date'].toString()),
+                          subtitle: Text(friendlyDate(item['bill_date'].toString())),
                           trailing: Text(
                             moneyText(item['item_price']),
                             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),

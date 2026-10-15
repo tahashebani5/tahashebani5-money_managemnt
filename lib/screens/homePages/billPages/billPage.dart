@@ -99,7 +99,7 @@ class _BillpageState extends State<Billpage> {
     return ScaffoldMessenger(
       key: _messengerKey,
       child: Scaffold(
-        appBar: AppBar(title: Text('فاتورة ${ltr(widget.date)}')),
+        appBar: AppBar(title: Text('فاتورة ${friendlyDate(widget.date)}')),
         body: FutureBuilder<List<dynamic>>(
           future: _load(),
           builder: (context, snapshot) {

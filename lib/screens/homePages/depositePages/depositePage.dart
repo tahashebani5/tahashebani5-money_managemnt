@@ -160,7 +160,7 @@ class _DepositepageState extends State<Depositepage> {
                             ),
                             subtitle: Text(
                               [
-                                deposite['deposite_date'].toString(),
+                                friendlyDate(deposite['deposite_date'].toString()),
                                 if ((deposite['note'] as String?)?.isNotEmpty ?? false) deposite['note'] as String,
                               ].join(' · '),
                             ),

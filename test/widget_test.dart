@@ -24,6 +24,15 @@ void main() {
     expect(DatabaseHelper().formatDate(DateTime(2026, 1, 5)), '2026-01-05');
   });
 
+  test('friendlyDate uses today / yesterday / weekday names', () {
+    final now = DateTime(2026, 10, 15, 9, 30); // a Thursday
+    expect(friendlyDate('2026-10-15', now: now), 'اليوم');
+    expect(friendlyDate('2026-10-14', now: now), 'أمس');
+    expect(friendlyDate('2026-10-12', now: now), 'الاثنين 12 أكتوبر');
+    expect(friendlyDate('2025-12-31', now: now), 'الأربعاء 31 ديسمبر 2025');
+    expect(friendlyDate('not a date', now: now), 'not a date');
+  });
+
   test('monthTitle shows the Arabic month name', () {
     expect(monthTitle('2026-10-15'), 'أكتوبر 2026');
     expect(monthTitle('not a date'), 'not a date');

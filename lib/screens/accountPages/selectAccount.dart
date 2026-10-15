@@ -2,7 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:money_management/screens/accountPages/createAccount.dart';
-import 'package:money_management/screens/homePages/homePage.dart';
+import 'package:money_management/screens/homePages/accountShell.dart';
 import '../../services/Database_Services.dart';
 import '../../widgets/commonWidgets.dart';
 
@@ -174,8 +174,8 @@ class _SelectaccountState extends State<Selectaccount> {
                     Navigator.of(context)
                         .push(
                           MaterialPageRoute(
-                            builder: (context) => Homepage(
-                              acccount_id: account['account_id'],
+                            builder: (context) => Accountshell(
+                              account_id: account['account_id'],
                             ),
                           ),
                         )

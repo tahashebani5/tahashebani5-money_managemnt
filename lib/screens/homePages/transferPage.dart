@@ -115,7 +115,7 @@ class _TransferpageState extends State<Transferpage> {
                       labelText: 'التاريخ',
                       prefixIcon: Icon(Icons.calendar_today_outlined),
                     ),
-                    child: Text(ltr(_date)),
+                    child: Text(friendlyDate(_date)),
                   ),
                 ),
                 const SizedBox(height: 32),

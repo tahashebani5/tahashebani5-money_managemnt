@@ -49,9 +49,9 @@ class _PreviesbillspageState extends State<Previesbillspage> {
         icon: const Icon(Icons.edit_calendar),
         label: const Text('فاتورة بتاريخ آخر'),
       ),
-      appBar: AppBar(title: const Text('الفواتير السابقة')),
+      appBar: AppBar(title: const Text('الفواتير')),
       body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: DatabaseHelper().getBills(widget.account_id),
+        future: DatabaseHelper().getBills(widget.account_id, nonEmptyOnly: true),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -90,7 +90,7 @@ class _PreviesbillspageState extends State<Previesbillspage> {
                         foregroundColor: scheme.onPrimaryContainer,
                         child: const Icon(Icons.receipt_long),
                       ),
-                      title: Text(bill['bill_date'].toString()),
+                      title: Text(friendlyDate(bill['bill_date'].toString())),
                       trailing: Text(
                         moneyText(bill['total_price']),
                         style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),

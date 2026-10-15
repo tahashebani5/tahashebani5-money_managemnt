@@ -47,6 +47,27 @@ const ItemCategory noCategory = ItemCategory('', 'بدون تصنيف', Icons.sh
 ItemCategory categoryOf(String? key) =>
     itemCategories.firstWhere((c) => c.key == key, orElse: () => noCategory);
 
+// DateTime.weekday: Monday = 1 ... Sunday = 7
+const List<String> arabicWeekdays = [
+  'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد',
+];
+
+// "2026-10-15" -> "اليوم" / "أمس" / "الخميس 15 أكتوبر" (year added when not this year).
+// Only for display; dates are still stored as "yyyy-MM-dd".
+String friendlyDate(String date, {DateTime? now}) {
+  final day = DateTime.tryParse(date);
+  if (day == null) return date;
+  final today = now ?? DateTime.now();
+  // UTC so daylight-saving changes cannot turn "yesterday" into 0 days
+  final diff = DateTime.utc(today.year, today.month, today.day)
+      .difference(DateTime.utc(day.year, day.month, day.day))
+      .inDays;
+  if (diff == 0) return 'اليوم';
+  if (diff == 1) return 'أمس';
+  final text = '${arabicWeekdays[day.weekday - 1]} ${day.day} ${arabicMonths[day.month - 1]}';
+  return day.year == today.year ? text : '$text ${day.year}';
+}
+
 // "2026-10-15" -> "أكتوبر 2026"
 String monthTitle(String date) {
   final parts = date.split('-');

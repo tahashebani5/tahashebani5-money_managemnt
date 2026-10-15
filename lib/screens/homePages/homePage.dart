@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:money_management/screens/homePages/billPages/addItem.dart';
 import 'package:money_management/screens/homePages/billPages/billPage.dart';
-import 'package:money_management/screens/homePages/billPages/previesBillsPage.dart';
-import 'package:money_management/screens/homePages/depositePages/depositePage.dart';
+import 'package:money_management/screens/homePages/depositePages/addDepositePage.dart';
 import 'package:money_management/screens/homePages/searchPage.dart';
-import 'package:money_management/screens/homePages/statisticsPage.dart';
 import 'package:money_management/screens/homePages/transferPage.dart';
 import '../../services/Database_Services.dart';
 import '../../widgets/commonWidgets.dart';
@@ -40,6 +39,14 @@ class _HomepageState extends State<Homepage> {
     final billId = await DatabaseHelper().getOrCreateBill(widget.acccount_id, today);
     if (!mounted) return;
     _open(Billpage(account_id: widget.acccount_id, date: today, bill_id: billId));
+  }
+
+  // Adds an expense straight to today's bill without opening the bill first.
+  Future<void> _quickAddExpense() async {
+    final today = DatabaseHelper().formatDate(DateTime.now());
+    final billId = await DatabaseHelper().getOrCreateBill(widget.acccount_id, today);
+    if (!mounted) return;
+    _open(Additem(bill_id: billId, account_id: widget.acccount_id, date: today));
   }
 
   // Deleting needs the account name typed in, and a backup is shared first.
@@ -131,15 +138,9 @@ class _HomepageState extends State<Homepage> {
                 icon: const Icon(Icons.search),
                 onPressed: () => _open(Searchpage(account_id: widget.acccount_id)),
               ),
-              IconButton(
-                tooltip: 'الإحصائيات',
-                icon: const Icon(Icons.bar_chart),
-                onPressed: () => _open(Statisticspage(account_id: widget.acccount_id)),
-              ),
               PopupMenuButton<String>(
                 onSelected: (value) {
                   if (value == 'budget') _editBudget((account['monthly_budget'] as num?)?.toDouble());
-                  if (value == 'transfer') _open(Transferpage(account_id: widget.acccount_id));
                   if (value == 'delete') _deleteAccount(account['account_name'] as String);
                 },
                 itemBuilder: (context) => [
@@ -148,13 +149,6 @@ class _HomepageState extends State<Homepage> {
                     child: ListTile(
                       leading: Icon(Icons.savings),
                       title: Text('الميزانية الشهرية'),
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'transfer',
-                    child: ListTile(
-                      leading: Icon(Icons.swap_horiz),
-                      title: Text('تحويل إلى حساب آخر'),
                     ),
                   ),
                   const PopupMenuDivider(),
@@ -172,8 +166,13 @@ class _HomepageState extends State<Homepage> {
               ),
             ],
           ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: _quickAddExpense,
+            icon: const Icon(Icons.add_shopping_cart),
+            label: const Text('إضافة مصروف'),
+          ),
           body: ListView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(bottom: 96),
             children: [
               SummaryCard(
                 label: 'الرصيد الحالي',
@@ -220,14 +219,14 @@ class _HomepageState extends State<Homepage> {
                       onTap: _openTodayBill,
                     ),
                     _ActionTile(
-                      icon: Icons.history,
-                      label: 'الفواتير السابقة',
-                      onTap: () => _open(Previesbillspage(account_id: widget.acccount_id)),
-                    ),
-                    _ActionTile(
                       icon: Icons.add_card,
                       label: 'إضافة رصيد',
-                      onTap: () => _open(Depositepage(account_id: widget.acccount_id)),
+                      onTap: () => _open(Adddepositepage(account_id: widget.acccount_id)),
+                    ),
+                    _ActionTile(
+                      icon: Icons.swap_horiz,
+                      label: 'تحويل',
+                      onTap: () => _open(Transferpage(account_id: widget.acccount_id)),
                     ),
                   ],
                 ),
@@ -278,7 +277,7 @@ class _HomepageState extends State<Homepage> {
         onTap = () => _deleteTransfer(activity);
     }
     final subtitle = [
-      activity['date'].toString(),
+      friendlyDate(activity['date'].toString()),
       if (hasNote && type != 'deposite') note,
     ].join(' · ');
     return Card(
